@@ -33,3 +33,6 @@ logs/
 
 # CLAUDE.local.md (machine-local Second-Brain pointer) is kept out of git via
 # .git/info/exclude — not here — to avoid advertising a local path in a public repo.
+
+# stray runtime lock from the scheduled-tasks system
+.claude/scheduled_tasks.lock
