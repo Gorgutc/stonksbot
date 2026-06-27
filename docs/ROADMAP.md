@@ -9,7 +9,7 @@
 - **Phase:** preparation complete → ready to start **M0**.
 - **Done:** agent harness (check-kit 36/36), Second Brain folder, frozen invariants, comprehensive TZ
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
-  Branch `claude/agent-harness-bootstrap` pushed.
+  Merged to `main` (latest `44022e1`).
 - **No bot code yet** — all profiles `dormant`. M0 is the first to write code.
 - **Pre-M0 contract layer RESOLVED (2026-06-27 #3):** TZ §4.1/§5.1/§12.1 → `docs/contracts/`
   (config-and-secrets, db-schema, tax-and-dividends); `[verify]` gaps closed by research (index = MOEX ISS,

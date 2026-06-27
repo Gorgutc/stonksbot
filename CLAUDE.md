@@ -20,7 +20,9 @@ share one canonical rule set. The full rules are imported below from `AGENTS.md`
   `.codex/hooks/` — the same scripts Codex registers in `.codex/hooks.json`. Both
   harnesses get the same session context, prompt nudge, and post-edit
   verification. The post-edit hook is path-scoped (via `.agent-kit.json`
-  `verifyPaths`) and blocks (exit 2) on failure.
+  `verifyPaths`) and blocks (exit 2) on failure. Separately, the git
+  **pre-commit/pre-push gates** (`tools/install-hooks.mjs`) are installed and live —
+  they run on every commit/push, and worktrees inherit the main repo's `.git/hooks`.
 - This kit keeps `.codex/` and `.claude/` **independent** (hand-authored). Run
   `node tools/check-kit.mjs` to confirm the two harness layers stay consistent
   (every Codex agent has a read-only Claude mirror, the stubs point at AGENTS.md,

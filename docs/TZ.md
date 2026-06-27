@@ -73,7 +73,9 @@ Detail + live status + the post-M3 STOP gate in `docs/ROADMAP.md`.
 ## 4. Stack & repository layout
 **Stack:** Python 3.12+; FastAPI (dashboard + internal API); SQLite (MVP) → Postgres (VPS);
 python-telegram-bot (control plane); APScheduler (daily/monthly jobs); pydantic (config/DTO); official
-**T-Invest Python SDK** (grpc) [verify name/version §20]; pandas/numpy (research); pytest + hypothesis;
+**T-Invest Python SDK** (grpc) — package **`t-tech-investments`** installed from T-Bank's
+GitLab simple-index (NOT PyPI; legacy `tinkoff-investments` is quarantined), pin the exact
+version at build time *(resolved: ADR-0005 / research whq6u1gxe)*; pandas/numpy (research); pytest + hypothesis;
 ruff; structlog.
 
 **Layout (M0):**
@@ -95,7 +97,7 @@ Two layers, loaded by pydantic-settings. **Secrets (env-only, never committed; i
 universe lists + statuses, eligibility-filter thresholds, risk limits, strategy params (pinned), order TTL,
 daily-run time, `tariff`, benchmark symbols, `data_conflict` thresholds.
 `.env.example` ships with **placeholder** values only (no real token). **Secret-scan gate** (§16) matches
-token shapes: Telegram bot token = `^\d{6,12}:[A-Za-z0-9_-]{30,}$`; T-Invest token = opaque ~80+ char
+token shapes: Telegram bot token = `^\d{6,15}:[A-Za-z0-9_-]{30,}$`; T-Invest token = opaque ~80+ char
 `t.<base64url>` style — treat any committed value matching these (or assigned to a `*_TOKEN` key) as a leak.
 
 ## 5. Data layer
@@ -115,8 +117,8 @@ primary T-Invest, cross-check MOEX ISS; transient divergence → re-check; persi
   `first_1day_candle_date`, liquidity stats incl. **`spread_bps`** (for the 0.50% filter + ranking),
   `identifier_history` (JSON — e.g. TCSG→T ticker/uid stitching).
 - **`index_reference`/rows in instrument_reference** with `instrument_kind=index` hold IMOEX, MCFTR
-  (`is_tradable=false`, no whitelist_status) so benchmarks/regime have a home. [verify §20: are indices
-  retrievable as candles via T-Invest, or must they come from MOEX ISS?]
+  (`is_tradable=false`, no whitelist_status) so benchmarks/regime have a home. Index candles come from
+  **MOEX ISS** (`index_source=moex_iss`); T-Invest gives index *last price* only *(resolved: ADR-0005 / research whq6u1gxe)*.
 - **`candles`** (PK `instrument_uid, interval, ts, source_version`): OHLCV as Quotation units/nano,
   `is_complete`, `is_stale`, `adjusted` (split-adjusted), source. New loads = new `source_version` (no silent overwrite).
 - **`dividends`** (uid, ex_date, gross_amount units/nano, currency). Source [verify §20].
@@ -302,6 +304,8 @@ never sells. **1 open position is a pilot limit** (expansion is a separate post-
   not final at 19:00 if evening trades print to it. **Decide and document whether the acted-on D1 close
   includes the evening session, and set the run time after the *final* close accordingly** (bears directly on
   the no-intraday-lookahead invariant). [verify §20]
+  - **`close_definition` (OWNER-PENDING):** `auction_close` vs `d1_candle_after_evening` is still owner-ratify —
+    see `docs/contracts/config-and-secrets.md` §6a (no-lookahead LAW surface; no canonical close asserted here).
 - **VPS (prepared in parallel, before the live gate):** Docker Compose, systemd/auto-restart, **Postgres
   migration** (keep the SQLite→Postgres switch point explicit), secret store, firewall, dashboard via SSH
   tunnel/VPN (never public), DB+log backups, disaster-recovery + secret-rotation runbook. Provision M6a in
@@ -315,7 +319,9 @@ generated D1 candles → strategy/risk invariants hold. `lookahead-auditor` + `r
 
 ## 19. Open items to confirm during build
 - Telegram user-id(s) for the whitelist (M5). Final `max_holding_days` ({20,40}). Final tariff (M3 cost-sensitivity).
-- **Index data source** (IMOEX/MCFTR via T-Invest candles vs MOEX ISS) — **[verify] before M1.**
+- **Index data source:** **MOEX ISS** (`index_source=moex_iss`) — IMOEX **and** MCFTR daily candles via
+  MOEX ISS; T-Invest gives index *last price* only. Same answer as config-and-secrets §6a
+  *(resolved: ADR-0005 / research whq6u1gxe)*.
 - **Daily-run time** + whether D1 close includes the evening session (§17). Holiday/short-session handling.
 - `data_conflict` exact threshold (default §5.1). DB switch point SQLite→Postgres (VPS/M6).
 - Dividend calendar + split corporate-action **sources** (§20). Ticker-history stitching (TCSG→T).
@@ -332,12 +338,16 @@ generated D1 candles → strategy/risk invariants hold. `lookahead-auditor` + `r
 - **PostOrder client `order_id` idempotency** confirmed. `GetTechAnalysis` server indicators (own enum).
   `instrument_uid` over FIGI. Candle depth D1 deep (seconds last month only).
 
-**Must-verify before the relevant code ships [verify]:** exact SDK package name + version (does it expose
-GetOrderPrice/GetTechAnalysis); per-method rate caps (GetOrderPrice/GetTechAnalysis) and PostOrderAsync 600/min
+**Must-verify before the relevant code ships [verify]:** whether the SDK exposes
+GetOrderPrice/GetTechAnalysis (the package itself is resolved: **`t-tech-investments`** via T-Bank's
+GitLab simple-index, NOT PyPI — *resolved: ADR-0005 / research whq6u1gxe*); per-method rate caps
+(GetOrderPrice/GetTechAnalysis) and PostOrderAsync 600/min
 (unverified — bot uses sync PostOrder); whether GetOrderPrice covers market orders (limit-only assumed);
-**whether IMOEX/MCFTR are retrievable as candles via T-Invest** (else MOEX ISS); dividend method (GetDividends?)
-and corporate-action/split source; precise sandbox fill/commission semantics; NDFL bracket application detail;
-the MOEX evening-session effect on the final D1 close.
+dividend method (GetDividends?) and corporate-action/split source; precise sandbox fill/commission semantics;
+NDFL bracket application detail; the MOEX evening-session effect on the final D1 close.
+
+Index source is resolved: IMOEX/MCFTR daily candles come from **MOEX ISS** (`index_source=moex_iss`);
+T-Invest gives index *last price* only *(resolved: ADR-0005 / research whq6u1gxe)*.
 
 ## 21. Legal / disclaimer
 Own-account only — no third-party signals/advice/money management (else 39-ФЗ investment-advisory /

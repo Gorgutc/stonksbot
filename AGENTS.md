@@ -159,7 +159,7 @@ pre-PR/CI; `verifyCommand` is a back-compat alias). Harness tooling:
 node tools/check-kit.mjs                              # harness integrity / parity
 node tools/codex-orchestrator/fanout.mjs --doctor     # orchestrator prerequisites
 node tools/evidence-gate.mjs                          # fail-closed evidence gate (if configured)
-node tools/install-hooks.mjs                          # install git pre-commit/pre-push gates
+node tools/install-hooks.mjs                          # git pre-commit/pre-push gates (installed & live: run on every commit/push; worktrees inherit .git/hooks)
 # project examples — set these in .agent-kit.json
 npm test
 npm run build
