@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Git-hook dispatcher (zero dependencies). Called by the hooks that
 // tools/install-hooks.mjs writes. Usage:
-//   node tools/git-gate.mjs pre-commit   # runs verify.fast
-//   node tools/git-gate.mjs pre-push     # runs verify.ship||deep + check-kit + evidence-gate
-// Every step is optional/no-op when not configured. Exits non-zero on failure.
+//   node tools/git-gate.mjs pre-commit   # secret-scan (staged) + verify.fast
+//   node tools/git-gate.mjs pre-push     # secret-scan (--all) + verify.ship||deep + check-kit + evidence-gate
+// secret-scan always runs (token leak protection, even before verify.* is set);
+// every other step is optional/no-op when not configured. Exits non-zero on failure.
 
 import { execSync } from "node:child_process";
 import fs from "node:fs";
@@ -39,9 +40,11 @@ function node(script, args = "") {
 
 try {
   if (stage === "pre-commit") {
+    node("tools/secret-scan.mjs");
     const cmd = v.fast || cfg.verifyCommand;
     if (cmd) run(cmd);
   } else if (stage === "pre-push") {
+    node("tools/secret-scan.mjs", "--all");
     const cmd = v.ship || v.deep || v.fast || cfg.verifyCommand;
     if (cmd) run(cmd);
     node("tools/check-kit.mjs");
