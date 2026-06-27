@@ -1,2 +1,40 @@
 # stonksbot
 
+A cautious **trading laboratory** (not an "autonomous trader") for the
+**T-Invest (T-Bank) API** on **MOEX Russian stocks**. It researches a formal
+rule-based strategy, backtests it honestly, paper/sandbox-tests it, then trades a
+tiny **dedicated** account in **confirm mode** — the bot proposes an entry, the human
+confirms in Telegram, and protective exits are automated. Codex/Claude build, review,
+and document the system; they never decide buy/sell.
+
+> **Status: preparation phase — no bot code yet.** This repo currently holds the
+> agent harness (Codex + Claude Code + Gemini) and a link to the cross-session memory
+> (the Second Brain vault). Implementation starts from a future TZ (spec).
+
+## Read first
+- `AGENTS.md` — single source of truth for every agent harness (see PROJECT SPECIFICS).
+- `docs/frozen-decisions.md` — the locked risk/safety invariants (LAW).
+- `GETTING-STARTED.md` — how to activate the harness in a session.
+- Second Brain (cross-session memory): `1-Projects/stonksbot/_INDEX.md` →
+  `Conventions.md` 🔒 → the latest `Sessions/` note. The repo's machine-local
+  `CLAUDE.local.md` points there.
+
+## Harness
+- Multi-harness: `AGENTS.md` (canonical) + `CLAUDE.md` (+ Claude skills/agents) +
+  `GEMINI.md` (stub). Shared hooks live in `.codex/hooks/`.
+- Domain skills: `risk-policy-guardian`, `backtest-honesty`, `broker-api-contract`,
+  `secrets-token-policy`, `state-machine-discipline` (plus the kit's generic skills).
+- Domain subagents: `risk-invariant-auditor`, `lookahead-auditor` (plus the kit's 7).
+- All components are **dormant profiles** (`docs/profiles/`) — no toolchain/build is
+  introduced until the TZ flips one to `active` (`component-guardian` enforces).
+- Self-check: `node tools/check-kit.mjs`.
+
+## Safety (non-negotiable — see `docs/frozen-decisions.md`)
+Dedicated account + `account_id` guard · confirm-mode first · limit orders only ·
+no margin / shorts / market orders · strict portfolio limits · automated risk exits ·
+`kill` never sells positions · no intraday lookahead · honest backtest with full costs ·
+secrets never in code / logs / Telegram.
+
+**This is not financial advice and guarantees no profit.** Backtest results do not
+guarantee future returns; API failures, gaps, partial fills, commissions, and taxes
+are real.

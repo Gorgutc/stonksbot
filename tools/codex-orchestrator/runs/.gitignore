@@ -1,0 +1,3 @@
+# Fan-out run artifacts are local-only; do not commit.
+*
+!.gitignore
