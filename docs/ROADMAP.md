@@ -16,6 +16,12 @@
   SDK = `t-tech-investments` via GitLab, `GetDividends`, auction close, НДФЛ 13/15%); **secret-scan gate added**.
   Contracts passed an adversarial audit (4 majors fixed). **M0 code NOT started** — awaiting owner go-ahead to
   activate `research-backtest`. See ADR-0005 + Second Brain `Improvements.md` §"Решения владельца".
+- **M1-M6 design-contract layer DRAFTED (2026-06-27 #4):** 17 contracts in `docs/contracts/` + `docs/ops/`
+  (data-layer, strategy, backtest, state-machine, reconciliation, broker-adapter, universe-eligibility,
+  session-policy, journal-reporting, dashboard-telegram-security, pre-live-gates, testing-strategy,
+  account-guard-split, tax-open-questions, tax-fixture, local-deployment, vps-deployment) — design only, no code;
+  passed a 20-agent adversarial audit + `/code-review`. Owner-pending / no-lookahead surfaces kept as placeholders.
+  M0 code still NOT started — awaiting owner decisions (branch `claude/condescending-ptolemy-57f152`).
 
 ## Milestones
 
