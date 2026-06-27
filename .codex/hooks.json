@@ -1,0 +1,44 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/session-start.js\"",
+            "commandWindows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"node (Join-Path (git rev-parse --show-toplevel) '.codex/hooks/session-start.js')\"",
+            "timeout": 5,
+            "statusMessage": "Loading agent-kit context"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/user-prompt-nudge.js\"",
+            "commandWindows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"node (Join-Path (git rev-parse --show-toplevel) '.codex/hooks/user-prompt-nudge.js')\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "apply_patch|Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/.codex/hooks/post-tool-verify.js\"",
+            "commandWindows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"node (Join-Path (git rev-parse --show-toplevel) '.codex/hooks/post-tool-verify.js')\"",
+            "timeout": 600,
+            "statusMessage": "Running project verifyCommand"
+          }
+        ]
+      }
+    ]
+  }
+}

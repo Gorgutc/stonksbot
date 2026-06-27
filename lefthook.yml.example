@@ -1,0 +1,15 @@
+# Optional alternative to tools/install-hooks.mjs (this one requires the lefthook
+# binary: https://github.com/evilmartians/lefthook). To use: rename this file to
+# `lefthook.yml`, install lefthook, then run `lefthook install`.
+#
+# The zero-dependency path is `node tools/install-hooks.mjs` (no extra binary).
+
+pre-commit:
+  commands:
+    verify-fast:
+      run: node tools/git-gate.mjs pre-commit
+
+pre-push:
+  commands:
+    ship-gate:
+      run: node tools/git-gate.mjs pre-push

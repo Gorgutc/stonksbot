@@ -1,0 +1,24 @@
+{
+  "_comment": "Generic read-only audit fan-out. Adapt the prompts to your project. Each unit is an independent Codex agent; nothing is edited.",
+  "concurrency": 4,
+  "sandbox": "read-only",
+  "timeoutMs": 900000,
+  "units": [
+    {
+      "id": "dead-code",
+      "prompt": "You are a read-only auditor. Explore the source tree of this project and find dead/unused/duplicated code: unreferenced files, exports nobody imports, unreachable branches, copy-pasted blocks. Do NOT edit anything. Output a concise bulleted list with file:line evidence and a one-line note per finding. Analysis only."
+    },
+    {
+      "id": "deps-risk",
+      "prompt": "You are a read-only auditor. Read the dependency manifests (package.json / lockfile / requirements / go.mod / Cargo.toml as applicable) and the code that uses them. Do NOT edit anything. Report: outdated or risky dependencies, unused dependencies, and any dependency used in a way that looks fragile. Give evidence. Analysis only."
+    },
+    {
+      "id": "docs-vs-code",
+      "prompt": "You are a read-only auditor. Compare README and any docs against what the code actually does. Do NOT edit anything. Report concrete drift: documented commands/flags/endpoints that no longer exist, missing setup steps, stale examples. Cite file:line for both the doc claim and the code reality. Analysis only."
+    },
+    {
+      "id": "test-gaps",
+      "prompt": "You are a read-only auditor. Map the test suite against the source. Do NOT edit anything. Report the most important untested or weakly-tested areas (critical paths, error handling, edge cases) and where they live. Give file references. Analysis only, no new tests written."
+    }
+  ]
+}

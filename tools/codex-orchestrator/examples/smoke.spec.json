@@ -1,0 +1,12 @@
+{
+  "concurrency": 1,
+  "sandbox": "read-only",
+  "skipGitCheck": true,
+  "timeoutMs": 120000,
+  "units": [
+    {
+      "id": "smoke",
+      "prompt": "Connectivity check only. Do not read files or use tools. Reply with exactly this text and nothing else: FANOUT OK"
+    }
+  ]
+}

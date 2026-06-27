@@ -1,0 +1,29 @@
+{
+  "name": "stonksbot",
+  "verify": {
+    "fast": null,
+    "deep": null,
+    "ship": null
+  },
+  "verifyCommand": null,
+  "verifyPaths": [],
+  "broadTaskTriggers": [
+    "backtest", "walk-forward", "walk forward", "strategy", "risk engine", "reconciliation",
+    "бэктест", "уолк-форвард", "стратеги", "риск", "сверка", "реконсиляц",
+    "свеч", "ликвидн", "комисси", "проскальзыван", "издержк", "оптимизац параметр"
+  ],
+  "profiles": [
+    { "name": "research-backtest", "status": "dormant", "doc": "docs/profiles/research-backtest.md" },
+    { "name": "broker-adapter",    "status": "dormant", "doc": "docs/profiles/broker-adapter.md" },
+    { "name": "execution-confirm", "status": "dormant", "doc": "docs/profiles/execution-confirm.md" }
+  ],
+  "evidenceGates": [
+    {
+      "changed": ["**/strategy/**", "**/backtest/**", "**/signals/**"],
+      "requires": ["docs/evidence/walk-forward-latest.md"],
+      "note": "Strategy/backtest surface changed -> attach walk-forward + cost-sensitivity evidence before shipping (fires only after install-hooks.mjs and once the surface exists)."
+    }
+  ],
+  "forbiddenTerms": ["Next.js", "Tailwind", "Playwright", "WPF", "Avalonia", "FlyleafLib", "WinForms", "Unreal Engine", "Blender", "bpy"],
+  "notes": "PREPARATION PHASE - no bot code yet. This repo currently holds only the agent harness + a pointer to the Second Brain vault; implementation starts from a future TZ (spec). verify.* are intentionally null so the post-edit hook no-ops on an empty repo; when a component profile is activated and real Python code lands, set verify.fast='ruff check . && pytest -q', verify.deep='pytest', verify.ship='pytest --maxfail=1 -q' and mirror them in AGENTS.md. ALL components are DORMANT profiles: no Python toolchain/dependency/build command for a dormant component may be introduced until an explicit request flips its status to active (component-guardian enforces - this is how 'prepare now, code from the TZ later' is encoded). broadTaskTriggers extend the fan-out nudge with trading-domain terms (RU+EN). forbiddenTerms catch stack-name leakage from sibling agent-kits (web-frontend / desktop-GUI / 3D tooling) - stonksbot is a Python backend trading lab. evidenceGates fire only after tools/install-hooks.mjs is installed and the strategy/backtest surface exists."
+}

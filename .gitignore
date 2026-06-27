@@ -1,0 +1,35 @@
+node_modules/
+tools/codex-orchestrator/runs/*
+!tools/codex-orchestrator/runs/.gitignore
+*.log
+.DS_Store
+
+# --- secrets (NEVER commit) ---
+.env
+.env.*
+!.env.example
+*.token
+*.key
+secrets/
+
+# --- Python (when code lands) ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# --- local data / journals / db ---
+*.sqlite
+*.sqlite3
+*.db
+data/
+logs/
+
+# CLAUDE.local.md (machine-local Second-Brain pointer) is kept out of git via
+# .git/info/exclude — not here — to avoid advertising a local path in a public repo.
