@@ -28,7 +28,7 @@
 | `instrument_reference.whitelist_status` | `approved`, `managed_only`, `watch_only`, `blocked`, `pending` (NULL for indices) |
 | `instrument_reference.data_status` | `ok`, `data_conflict` |
 | `signals.decision` | `candidate`, `selected`, `skipped`, `risk_rejected` |
-| `signals.reason` (skip codes) | `lot_too_expensive`, `low_liquidity`, `wide_spread`, `not_trading`, `data_missing`, `data_conflict` (frozen-decisions §66) |
+| `signals.reason` (skip codes) | `lot_too_expensive`, `low_liquidity`, `wide_spread`, `not_trading`, `data_missing`, `data_conflict` (frozen-decisions.md, "Strategy, data & backtest honesty" (per-cycle eligibility row)) |
 | `proposals.state` | `awaiting_confirmation`, `confirmed`, `rejected`, `expired` |
 | `orders.side` | `buy`, `sell` |
 | `orders.type` | `LIMIT` (only — market/bestprice are hard-rejected upstream, not storable) |

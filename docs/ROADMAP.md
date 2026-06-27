@@ -9,13 +9,19 @@
 - **Phase:** preparation complete → ready to start **M0**.
 - **Done:** agent harness (check-kit 36/36), Second Brain folder, frozen invariants, comprehensive TZ
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
-  Branch `claude/agent-harness-bootstrap` pushed.
+  Merged to `main` (latest `44022e1`).
 - **No bot code yet** — all profiles `dormant`. M0 is the first to write code.
 - **Pre-M0 contract layer RESOLVED (2026-06-27 #3):** TZ §4.1/§5.1/§12.1 → `docs/contracts/`
   (config-and-secrets, db-schema, tax-and-dividends); `[verify]` gaps closed by research (index = MOEX ISS,
   SDK = `t-tech-investments` via GitLab, `GetDividends`, auction close, НДФЛ 13/15%); **secret-scan gate added**.
   Contracts passed an adversarial audit (4 majors fixed). **M0 code NOT started** — awaiting owner go-ahead to
   activate `research-backtest`. See ADR-0005 + Second Brain `Improvements.md` §"Решения владельца".
+- **M1-M6 design-contract layer DRAFTED (2026-06-27 #4):** 17 contracts in `docs/contracts/` + `docs/ops/`
+  (data-layer, strategy, backtest, state-machine, reconciliation, broker-adapter, universe-eligibility,
+  session-policy, journal-reporting, dashboard-telegram-security, pre-live-gates, testing-strategy,
+  account-guard-split, tax-open-questions, tax-fixture, local-deployment, vps-deployment) — design only, no code;
+  passed a 20-agent adversarial audit + `/code-review`. Owner-pending / no-lookahead surfaces kept as placeholders.
+  M0 code still NOT started — awaiting owner decisions (branch `claude/condescending-ptolemy-57f152`).
 
 ## Milestones
 

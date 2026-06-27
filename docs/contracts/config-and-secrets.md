@@ -20,7 +20,7 @@ Loaded from environment / `.env` (git-ignored). **Separate token per mode.** Nev
 | --- | --- | --- | --- |
 | `TINVEST_TOKEN_SANDBOX` | T-Invest sandbox token | `mode = sandbox` | sandbox-scoped token only |
 | `TINVEST_TOKEN_LIVE_CONFIRM` | T-Invest live token for confirm mode | `mode = confirm` | account-scoped where the account product type allows [verify] |
-| `TELEGRAM_BOT_TOKEN` | Telegram control-plane bot token | always (control plane) | shape `^\d{6,12}:[A-Za-z0-9_-]{30,}$` |
+| `TELEGRAM_BOT_TOKEN` | Telegram control-plane bot token | always (control plane) | shape `^\d{6,15}:[A-Za-z0-9_-]{30,}$` |
 | `DASHBOARD_AUTH_TOKEN` | Bearer token for the local dashboard | always (dashboard from start) | opaque random ≥32 chars |
 | `TINVEST_TOKEN_LIVE_AUTO_SMALL` | *reserved, DISABLED in MVP* | never (MVP) | `auto_small` is architected but off [LAW] |
 
@@ -204,6 +204,10 @@ The secret-scan gate (`tools/secret-scan.mjs`, run by the git hooks) treats as a
 - `telegram_user_whitelist` ids — needed by M5.
 - Secret-storage backend (local Windows vs VPS store) — decided before live (M6).
 - Bot-account product type (account-scoped token feasible? else rely on the guard) — [verify, empirical at M4].
+- **Proposed tax keys (pin at M2, not yet in §2)** — the tax contracts depend on these; acknowledged here so the
+  canonical config registry names them: `tax.resident` (bool, default `true`); and the M2-fixture policy enums
+  `tax_rounding_direction`, `fifo_partial_lot`, `loss_netting`. See [tax-open-questions.md](tax-open-questions.md)
+  O1–O4 — fold into §2 **only after** the M2 worked fixture pins them (do not lock here).
 
 ## 6a. Resolved by research `whq6u1gxe` (see References `2026-06-27-tinvest-moex-tax-verify`)
 - `index_source = moex_iss` (IMOEX + MCFTR via MOEX ISS; T-Invest = index last price only).

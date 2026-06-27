@@ -73,10 +73,12 @@ the task, write a spec, run the orchestrator, and synthesize the results.
 ## Optional features
 
 ### Git gates (pre-commit / pre-push)
-Install zero-dependency git hooks that run your verify tiers:
+The zero-dependency git hooks are installed and live: pre-commit and pre-push run on
+every commit/push, and worktrees inherit the main repo's `.git/hooks`. They run your
+verify tiers:
 
 ```bash
-node tools/install-hooks.mjs          # pre-commit -> verify.fast ; pre-push -> verify.ship/deep + check-kit + evidence-gate
+node tools/install-hooks.mjs          # (re)install — pre-commit -> verify.fast ; pre-push -> verify.ship/deep + check-kit + evidence-gate
 node tools/install-hooks.mjs --uninstall
 ```
 
@@ -136,4 +138,5 @@ restate:
 - Keep `.codex/` and `.claude/` consistent **by hand**; `node tools/check-kit.mjs`
   catches mirror drift, missing hooks, broken stubs, bad profiles, and forbidden terms.
 - `evals/` holds copy-paste behavior smoke tests for the harness.
-- `docs/IMPROVEMENT-ROADMAP.md` tracks upgrades distilled from mature sibling harnesses.
+- `docs/IMPROVEMENT-ROADMAP.md` is a redirect stub — the stonksbot backlog lives in
+  the Second Brain (`1-Projects/stonksbot/Improvements.md`), not in this repo.
