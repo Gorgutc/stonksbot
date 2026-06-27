@@ -11,14 +11,18 @@
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
   Branch `claude/agent-harness-bootstrap` pushed.
 - **No bot code yet** — all profiles `dormant`. M0 is the first to write code.
-- **Resolve before M0 code:** TZ §4.1 (config/.env keys), §5.1 (schema DDL types/PK/FK/enums), §12.1 (tax rules).
+- **Pre-M0 contract layer RESOLVED (2026-06-27 #3):** TZ §4.1/§5.1/§12.1 → `docs/contracts/`
+  (config-and-secrets, db-schema, tax-and-dividends); `[verify]` gaps closed by research (index = MOEX ISS,
+  SDK = `t-tech-investments` via GitLab, `GetDividends`, auction close, НДФЛ 13/15%); **secret-scan gate added**.
+  Contracts passed an adversarial audit (4 majors fixed). **M0 code NOT started** — awaiting owner go-ahead to
+  activate `research-backtest`. See ADR-0005 + Second Brain `Improvements.md` §"Решения владельца".
 
 ## Milestones
 
 ### M0 — Foundations  `[ ]`  (activates: research-backtest)
 - [ ] pyproject, ruff, pytest, CI; `src/stonksbot/` skeleton (TZ §4)
-- [ ] **config/.env contract (TZ §4.1)** — pydantic settings, secret vs config keys, `.env.example` placeholders, **account_id guard**
-- [ ] **SQLite schema with DDL contract (TZ §5.1)** — Quotation units/nano (no float), epoch-ms UTC, PK/FK, CHECK enums (incl. `index` kind) + structured logging (audit-journal base)
+- [ ] **config/.env contract (TZ §4.1)** — pydantic settings, secret vs config keys, `.env.example` placeholders, **account_id guard** · *(design contract ✅ `docs/contracts/config-and-secrets.md`; code pending)*
+- [ ] **SQLite schema with DDL contract (TZ §5.1)** — Quotation units/nano (no float), epoch-ms UTC, PK/FK, CHECK enums (incl. `index` kind) + structured logging (audit-journal base) · *(design contract ✅ `docs/contracts/db-schema.md`; code pending)*
 - [ ] set `.agent-kit.json` `verify.fast = "ruff check . && pytest -q"`, `verify.deep = "pytest"`
 - **Exit:** `check-kit` green + `pytest` green; profile checklist "data schema recorded" checked.
 
