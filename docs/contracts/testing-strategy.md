@@ -87,7 +87,7 @@ backtest is "honest" only if **all** pass; a single backtest or sandbox run is *
 | ID | Honesty invariant | Required assertion | Frozen source |
 | --- | --- | --- | --- |
 | **H1** | **No intraday lookahead** | Signal is computed **only from bars with `is_complete=1`** as-of the decision `ts`; entry fills **no earlier than the next session**. A test feeds a series where "peeking" at the same-day close would change the decision and asserts the decision is **unchanged**. | frozen-decisions.md, "Strategy, data & backtest honesty" (no-lookahead row), db-schema §4 |
-| **H2** | **Conservative both-side fills** | A **limit buy fills only if the day's `low ≤ limit`**; otherwise **no trade** (not a magic close fill). A limit AT or ABOVE the day low fills (the market traded down through it); a limit one tick BELOW the low does **NOT** fill. | frozen-decisions.md, "Strategy, data & backtest honesty" (conservative both-side fills row) |
+| **H2** | **Conservative both-side fills** | A **limit buy fills only if the order's TTL-window low ≤ limit**; otherwise **no trade** (not a magic close fill). With only D1 OHLC available, the fallback is `D+1.open <= limit` else unfilled; whole-day `D+1.low` cannot prove a ~45-minute live order fill. | frozen-decisions.md, "Strategy, data & backtest honesty" (conservative both-side fills row) |
 | **H3** | **Costs both sides** | Round-trip applies commission **both sides** + slippage buffer per the configured `tariff`: `investor` 0.30%/side (`costs.investor_commission_bps=30`) or `trader` 0.05%/side + **`costs.trader_monthly_fee_rub=390`/mo**; plus `costs.slippage_bps=10`/side (BACKTEST only) and the `costs.min_commission_units`/`costs.min_commission_nano` (Quotation pair) 0.01 ₽ floor. ≈0.80% round trip on `investor`. | frozen-decisions.md, "Strategy, data & backtest honesty" (conservative both-side fills row), config §2.8 |
 | **H3a** | **390 ₽/mo monthly fee is modeled** | On `tariff=trader`, the **390 ₽ monthly fee is charged in the backtest PnL** (amortized per the model), so the trader tariff is not silently cheaper than reality (TZ §20: Трейдер 0.05%/side **+390 ₽/mo**). A test asserts the fee line appears in Layer-B for `trader` and is **absent** for `investor`. | config §2.8, TZ §20 |
 | **H4** | **НДФЛ tax fixture** | The after-tax (Layer-B) implementation reproduces the **hand-computed** worked example in [tax-and-dividends.md](tax-and-dividends.md) §8 (FIFO cost basis, commission in base, flat 13% at the pilot, realize-on-close), to the exact Quotation `units`/`nano` — **no broker/sandbox reference exists for tax** (tax §8). | tax §2 (NDFL on realized gains) + §8 (worked fixture); frozen-decisions.md, "Strategy, data & backtest honesty" (anti-overfitting row) |
@@ -121,7 +121,7 @@ P5  sizing-cap         : any proposed order value ≤ min(max_position_rub, max_
 P6  limit-only         : every emitted order has type=LIMIT (never market/bestprice)
 P7  costs-monotone     : round-trip net PnL is monotone non-increasing as commission_bps or slippage_bps increase
 P8  no-float-money     : every money value round-trips through Quotation units/nano with exact equality (no float drift)
-P9  fill-conservatism  : a limit buy is filled  <=>  some bar low ≤ limit within the order's TTL window
+P9  fill-conservatism  : a limit buy is filled  <=>  TTL-window low ≤ limit; D1-only data fills only when D+1 open ≤ limit
 P10 state-legality     : every state transition emitted is in the frozen transition set (proposals/orders/positions); idempotent re-apply is a no-op
 P11 kill-safety        : applying `kill` to any generated open-position state emits zero sell orders
 ```
@@ -169,7 +169,9 @@ Subagents + the `lookahead-auditor` / `risk-invariant-auditor` contracts):
 
 ## 8. Frozen invariants honored
 - **No-lookahead** — H1 + P1 assert signals use only `is_complete` bars as-of `ts`; entry next session (frozen-decisions.md, "Strategy, data & backtest honesty" (no-lookahead row)).
-- **Conservative both-side fills** — H2 + P9: limit buy fills only if `low ≤ limit`; unfilled = no trade (frozen-decisions.md, "Strategy, data & backtest honesty" (conservative both-side fills row)).
+- **Conservative both-side fills** — H2 + P9: limit buy fills only if the order's TTL-window low reaches the
+  limit; D1-only fallback fills only at `D+1.open <= limit`; unfilled = no trade (frozen-decisions.md,
+  "Strategy, data & backtest honesty" (conservative both-side fills row)).
 - **Costs both sides incl. 390 ₽/mo** — H3 + H3a: commission both sides + slippage (backtest) + the **390 ₽/mo**
   trader fee, per the configured `tariff`; min-commission floor (frozen-decisions.md, "Strategy, data & backtest honesty" (conservative both-side fills row), config §2.8, TZ §20).
 - **Honest hand-computed tax fixtures** — H4: Layer-B reproduces the worked НДФЛ example to exact Quotation
@@ -187,16 +189,17 @@ Subagents + the `lookahead-auditor` / `risk-invariant-auditor` contracts):
 
 ## 9. Open questions / owner-pending
 - **`verify.*` commands** — `.agent-kit.json` `verify.fast`/`verify.deep`/`verify.ship` are **null by design**
-  in the preparation phase; the concrete commands (intended `ruff check . && pytest -q` fast / `pytest` deep,
-  per AGENTS.md/`.agent-kit.json` notes) **land at M0** when the first profile activates. Treated here as a
-  **[owner-pending]** placeholder — this contract does **not** assert them. **[owner-pending]**
+  in this readiness branch because no Python package/tests exist yet; the concrete commands (intended
+  `ruff check . && pytest -q` fast / `pytest` deep, per AGENTS.md/`.agent-kit.json` notes) **land in the first
+  M0 code branch** with `pyproject.toml`. Treated here as a **[owner-pending]** placeholder — this contract
+  does **not** assert them. **[owner-pending]**
 - **Coverage threshold** (§7) — set at M0 with the verify commands; no % asserted here. **[owner-pending]**
 - **NDFL rounding direction** in the fixture (math-round vs floor) and partial-lot FIFO split — pinned in the M2
   fixture (tax §8, §9). **[verify]**
 - **`tariff`** (investor vs trader) drives which cost rows H3/H3a assert — finalized at M3 cost-sensitivity
   (config §2.8, §6). **[owner-pending]**
-- **`close_definition`** (`auction_close` vs `d1_candle_after_evening`) sets the exact H1 close source — owner
-  must ratify (config §6a; the no-lookahead LAW surface). **[owner-pending]**
+- **`close_definition`** is ratified as `auction_close`; H1 uses the auction-close source. The evening-session
+  effect on provider D1 candles remains an empirical data-layer check, not an H1 blocker. **[verify]**
 - **Recorded-vs-live broker test mode** — whether L2 uses recorded cassettes or a live sandbox token, and the
   precise sandbox fill/commission semantics, is empirical at M4 (config §2.8 sandbox note, TZ §20). **[verify]**
 - **`max_holding_days`** ({20,40}) — the H/property time-exit tests pin to whichever value is chosen at M3

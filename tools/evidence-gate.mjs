@@ -58,8 +58,8 @@ function gitLines(cmd) {
       .split(/\r?\n/)
       .map((s) => s.trim())
       .filter(Boolean);
-  } catch {
-    return [];
+  } catch (error) {
+    throw new Error(`${cmd} failed with status ${error.status ?? "unknown"}`);
   }
 }
 function gitLinesArgs(args) {

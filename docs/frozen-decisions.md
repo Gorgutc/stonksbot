@@ -59,21 +59,21 @@ explicit owner decision; record it as an ADR in the Second Brain `Decisions/` to
 | Decision | Why frozen | Enforced by |
 | --- | --- | --- |
 | **Signal only after the daily candle closes; entry no earlier than the next session; no intraday lookahead.** | Prevents the backtest from "knowing" the close in advance. | `lookahead-auditor`, `backtest-honesty` skill |
-| **Conservative backtest fills:** a limit entry fills only if the day's low actually reaches the limit; unfilled = no trade; costs applied **both sides** (0.30%/side commission + 0.10%/side slippage buffer ≈ 0.80% round trip). | Honest fills beat "bought at close, sold at magic target". | `lookahead-auditor`, `backtest-honesty` skill |
+| **Conservative backtest fills:** a limit entry fills only if the next-session order TTL window actually trades at/through the limit; with D1-only data, fill only at `D+1.open <= limit`; unfilled = no trade; costs applied **both sides** (0.30%/side commission + 0.10%/side slippage buffer ≈ 0.80% round trip). | Honest fills beat "bought at close, sold at magic target" or using the whole-day low for a 45-minute order. | `lookahead-auditor`, `backtest-honesty` skill |
 | **Anti-overfitting:** optimize on train window only, validate out-of-sample / walk-forward; prefer robust params over max return; never trust a single backtest or sandbox profitability as proof. | Backtest overfitting + data snooping are the default failure mode. | `backtest-honesty` skill, review |
 | **Data truth:** primary = T-Invest API, fallback + cross-check = MOEX ISS; on large divergence mark the instrument `data_conflict` and **skip the signal** (do not silently trade). | Quiet data degradation kills trading systems. | `backtest-honesty` skill, data-layer tests |
 | **Instrument universe is a managed registry** (`approved` / `managed_only` / `watch_only` / `blocked` / `pending`), not hard-coded; the bot may NOT add new tickers to the trading universe itself. | Growing the universe must not silently grow risk. | `risk-policy-guardian`, universe tests |
-| **Per-cycle eligibility filters** (starting values, in config): max lot value 30% of capital, max spread 0.50%, min avg daily turnover 50M ₽, min recent trading days 40, trading-status + candles required. A failing `approved` ticker is marked `skipped` for that cycle (reason: lot_too_expensive / low_liquidity / wide_spread / not_trading / data_missing / data_conflict) — **skip ≠ remove from approved**. | Universe-level risk control without losing the ticker. | `risk-policy-guardian`, universe tests |
+| **Per-cycle eligibility filters** (starting values, in config): max lot value 30% of capital, max spread 0.50%, min avg daily turnover 50M ₽, min recent trading days 40, complete candles required; live trading status is re-read before every order action. A failing `approved` ticker is marked `skipped` for that cycle (reason: lot_too_expensive / low_liquidity / wide_spread / not_trading / data_missing / data_conflict) — **skip ≠ remove from approved**. | Universe-level risk control without losing the ticker. | `risk-policy-guardian`, universe tests |
 | **State as an explicit machine with audit trail:** signal → proposal → confirm → order → (partial) fill → position → exit, with startup reconciliation and idempotent transitions; external/manual account changes are adopted via reconciliation, not treated as errors. | The expensive bugs live in state transitions, not in MA20/MA50. | `state-machine-discipline` skill, `risk-invariant-auditor` |
 
 ## Known drift / owner decisions pending
-- No bot code exists yet (preparation phase). These contracts are written **ahead**
-  of the implementation so the current TZ + Codex/Claude build against them. Until a
-  component profile in `.agent-kit.json` is `active`, "Enforced by … tests/code" is
-  aspirational and the skill/agent + human review are the live guard. The named
-  enforcers `pre_live_gates`, `account_guard`, and the various `*-tests` are **future
-  artifacts** — they do not exist yet; treat them as the contract the implementation
-  must create, not as wired guards.
+- No bot code exists yet. Owner decision on 2026-06-29 starts M0 in the next
+  session and activates only the `research-backtest` profile; `broker-adapter` and
+  `execution-confirm` remain dormant. Until code/tests exist, "Enforced by …
+  tests/code" is aspirational and the skill/agent + human review are the live guard.
+  The named enforcers `pre_live_gates`, `account_guard`, and the various `*-tests`
+  are **future artifacts** — they do not exist yet; treat them as the contract the
+  implementation must create, not as wired guards.
 - **Holding horizon:** the locked framing is **2–6 weeks** (max 8 without review); the
   early "2–5 days" idea is superseded. Exact `max_holding_days` still open (backtest
   grid 20/40 days).
@@ -81,9 +81,12 @@ explicit owner decision; record it as an ADR in the Second Brain `Decisions/` to
   (~0.80% round trip with the slippage buffer). The reports warn this leaves almost no
   edge against a ~1% move and that *Трейдер* (0.05%/side) is far cheaper — **re-verify
   the tariff before live.**
-- **Final universe (owner to confirm):** the later, owner-grounded list wins —
-  `approved` = SBER, T, GAZP, ROSN, TATN, X5; `watch_only` = IRAO, LKOH. (Supersedes
-  the earlier NVTK/GMKN proposal.)
+- **Final universe (owner-ratified 2026-06-29):** `approved` = SBER, T, GAZP,
+  ROSN, TATN, X5; `watch_only` = IRAO, LKOH. (Supersedes the earlier NVTK/GMKN
+  proposal.)
+- **Close/run source (owner-ratified 2026-06-29):** `close_definition=auction_close`;
+  `daily_run_time=19:05 Europe/Moscow`. Evening-session impact on provider D1
+  candles remains empirical, but is not the M0 decision source.
 - **Sandbox ≠ live economics:** the T-Bank sandbox uses a fixed 0.05% commission and
   simplified fills — never read sandbox profitability as proof of real-market quality.
 - Full open-issue list (taxes, corporate actions, NTP/time sync, host-sleep/watchdog,

@@ -6,31 +6,38 @@
 > profile it activates (`dormant → active` when the milestone starts).
 
 ## Current state (2026-06-29)
-- **Phase:** preparation complete → ready to start **M0**.
-- **Done:** agent harness (`check-kit` currently reports 43 checks / 0 failed), Second Brain folder, frozen invariants, comprehensive TZ
+- **Phase:** **M0 authorized** → start implementation in the next session.
+- **Done:** agent harness (`check-kit` currently reports 53 checks / 0 failed), Second Brain folder, frozen invariants, comprehensive TZ
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
-  Merged to `main` (latest `44022e1`).
-- **No bot code yet** — all profiles `dormant`. M0 is the first to write code.
+  Merged to `main` (latest verified `560aa2b` after PR #4).
+- **No bot code yet** — `research-backtest` is now **active** by owner decision; `broker-adapter` and
+  `execution-confirm` remain dormant. M0 is the first to write code.
 - **Pre-M0 contract layer RESOLVED (2026-06-27 #3):** TZ §4.1/§5.1/§12.1 → `docs/contracts/`
   (config-and-secrets, db-schema, tax-and-dividends); `[verify]` gaps closed by research (index = MOEX ISS,
   SDK = `t-tech-investments` via GitLab, `GetDividends`, auction close, НДФЛ 13/15%); **secret-scan gate added**.
-  Contracts passed an adversarial audit (4 majors fixed). **M0 code NOT started** — awaiting owner go-ahead to
-  activate `research-backtest`. See ADR-0005 + Second Brain `Improvements.md` §"Решения владельца".
+  Contracts passed an adversarial audit (4 majors fixed). **M0 code NOT started**; the 2026-06-29 owner bundle
+  below now authorizes `research-backtest`. See ADR-0005 + Second Brain `Improvements.md`.
 - **M1-M6 design-contract layer DRAFTED (2026-06-27 #4):** 18 contracts in `docs/contracts/` + 2 ops docs in `docs/ops/`
   (data-layer, strategy, backtest, state-machine, reconciliation, broker-adapter, universe-eligibility,
   session-policy, journal-reporting, dashboard-telegram-security, pre-live-gates, testing-strategy,
   account-guard-split, tax-open-questions, tax-fixture, local-deployment, vps-deployment) — design only, no code;
-  passed a 20-agent adversarial audit + `/code-review`. Owner-pending / no-lookahead surfaces kept as placeholders.
-  M0 code still NOT started — awaiting owner decisions (branch `claude/condescending-ptolemy-57f152`).
+  passed a 20-agent adversarial audit + `/code-review`. Owner-pending / no-lookahead surfaces were kept as
+  placeholders until the 2026-06-29 owner bundle below.
+- **Owner decisions for M0 start (2026-06-29):** M0 starts next session; `research-backtest` active;
+  `close_definition=auction_close`; `daily_run_time=19:05 Europe/Moscow`;
+  `universe.approved=[SBER,T,GAZP,ROSN,TATN,X5]`; `universe.watch_only=[IRAO,LKOH]`;
+  account/token feasibility is **not** an M0 blocker (fail-closed stubs now, live scope check at M4);
+  M0 secrets are env/`.env` placeholders only, with the Windows/VPS secret-storage backend decided before live (M6).
 
 ## Milestones
 
-### M0 — Foundations  `[ ]`  (activates: research-backtest)
+### M0 — Foundations  `[~]`  (activates: research-backtest)
 - [ ] pyproject, ruff, pytest, CI; `src/stonksbot/` skeleton (TZ §4)
 - [ ] **config/.env contract (TZ §4.1)** — pydantic settings, secret vs config keys, `.env.example` placeholders, **account_id guard** · *(design contract ✅ `docs/contracts/config-and-secrets.md`; code pending)*
 - [ ] **SQLite schema with DDL contract (TZ §5.1)** — Quotation units/nano (no float), epoch-ms UTC, PK/FK, CHECK enums (incl. `index` kind) + structured logging (audit-journal base) · *(design contract ✅ `docs/contracts/db-schema.md`; code pending)*
-- [ ] set `.agent-kit.json` `verify.fast = "ruff check . && pytest -q"`, `verify.deep = "pytest"`
-- **Exit:** `check-kit` green + `pytest` green; profile checklist "data schema recorded" checked.
+- [ ] set `.agent-kit.json` `verify.fast = "ruff check . && pytest -q"`, `verify.deep = "pytest"`,
+  `verify.ship = "pytest --maxfail=1 -q"`
+- **Exit:** `check-kit` green + `verify.fast`/`verify.deep`/`verify.ship` green; profile checklist "data schema recorded" checked.
 
 ### M1 — Data layer  `[ ]`  (research-backtest)
 - [ ] T-Invest read-only + MOEX ISS fallback/cross-check; `candles` + `instrument_reference` (uid-keyed) **+ index series** (IMOEX/MCFTR — source [verify before M1])

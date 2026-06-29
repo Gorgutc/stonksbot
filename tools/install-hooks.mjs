@@ -31,6 +31,7 @@ try {
 
 const uninstall = process.argv.includes("--uninstall");
 const force = process.argv.includes("--force");
+let hadConflict = false;
 
 function hookBody(stage) {
   return `#!/bin/sh\n${MARKER}\nexec node "$(git rev-parse --show-toplevel)/tools/git-gate.mjs" ${stage}\n`;
@@ -55,6 +56,7 @@ for (const stage of STAGES) {
 
   if (existing && !managed && !force) {
     process.stderr.write(`refusing to overwrite unmanaged ${stage} hook (use --force to replace)\n`);
+    hadConflict = true;
     continue;
   }
 
@@ -65,6 +67,11 @@ for (const stage of STAGES) {
     /* chmod is a no-op on some platforms */
   }
   process.stdout.write(`installed ${stage} -> tools/git-gate.mjs\n`);
+}
+
+if (hadConflict) {
+  process.stderr.write("install-hooks: unmanaged hook conflict; no overwrite performed. Re-run with --force only after review.\n");
+  process.exitCode = 1;
 }
 
 void root;

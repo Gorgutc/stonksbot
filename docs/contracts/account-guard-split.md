@@ -155,9 +155,8 @@ This contract introduces **no new config keys**. It governs the use of keys alre
 | `account_id` | config §2.1 (string; required for sandbox/confirm) [LAW] | subject of S1/S4; the one dedicated bot account |
 | `mode` | config §2.1 (enum `paper`\|`sandbox`\|`confirm`) [LAW] | gates whether S1–S6 block startup (`paper` exempt from S1/S3–S6) |
 
-The **last-run account_id** needed by S2/G4 is **operational state**, not a config key: persist it next to the DB
-(e.g. a guard-state row) — pin its exact home in the M0 `config/`/`data/` build, do **not** introduce a config key.
-**[owner-pending]:** where last-run id is persisted (guard-state row vs sidecar) — M0 build detail.
+The **last-run account_id** needed by S2/G4 is **operational state**, not a config key: persist it in the DB
+singleton `guard_state` row (owner decision 2026-06-29), not in a sidecar file. Do **not** introduce a config key.
 
 ## 7. Frozen invariants honored
 
@@ -183,8 +182,6 @@ The **last-run account_id** needed by S2/G4 is **operational state**, not a conf
   load-bearing. *(Mirrors [config-and-secrets.md](config-and-secrets.md) §6 last bullet — do not assert a value.)*
 - **[verify]** Exact SDK method/shape for `GetAccounts` (id, name, type, status fields) against the pinned
   `t-tech-investments` SDK — confirm at M4 integration.
-- **[owner-pending]** Persistence home of the **last-run `account_id`** for the G4 change-detection (guard-state
-  row vs sidecar file) — M0 build detail; no config key.
 - **[owner-pending]** Exact wording / channel of the **manual change-confirmation** prompt (G4) — Telegram vs
   startup CLI confirm — lands with M5 control plane; the *requirement* (block until confirmed) is frozen now.
 - **Note:** `account_guard_stub_blocked` is M0-only and **must be removed** when M4 wires S3–S6 (same-change rule);
@@ -195,7 +192,8 @@ The **last-run account_id** needed by S2/G4 is **operational state**, not a conf
 - Frozen LAW: `docs/frozen-decisions.md` (Account & access; token policy; state machine).
 - Config: [config-and-secrets.md](config-and-secrets.md) §1 (token scope), §2.1 (`account_id`/`mode`), §3 + §3.1
   (the five-step guard + hard-fail config-load validation).
-- Schema: [db-schema.md](db-schema.md) §4 (row-level account guard; `orders`/`positions`/`cash_events`/`audit_journal`).
+- Schema: [db-schema.md](db-schema.md) §3.3 / §4 (`guard_state` change detection plus row-level account guard;
+  `orders`/`positions`/`cash_events`/`audit_journal`).
 - Spec: `docs/TZ.md` §4.1 (config/secrets), §7.1 (risk-engine pre-checks: account guard), §8 (reconciliation),
   §9 (broker adapter: tokens / account-scoping / product types), §15 (live confirm; dedicated account).
 - Skills: `risk-policy-guardian`, `secrets-token-policy`. Auditor: `risk-invariant-auditor`.

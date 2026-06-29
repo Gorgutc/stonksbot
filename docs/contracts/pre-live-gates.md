@@ -67,7 +67,7 @@ GATE-1 backtest verdict    ∈ {PASS, WEAK_PASS, FAIL}               # only PASS
 | 1.1 | Binding tariff fixed | `config.tariff` is set to the M3-finalized value; **[owner-pending]** until M3 cost-sensitivity resolves it (do not assume `investor`). | TZ §2, §3 M3; config §2.8 |
 | 1.2 | 3-year backtest = PASS for that tariff | Verdict = `PASS` per the locked gate criteria: return **≥ +2 pp vs equal-weight** AND **not worse than the index** (IMOEX/MCFTR) AND **max drawdown ≤ benchmark** AND **not one-lucky-trade**. `WEAK_PASS` and `FAIL` do **not** satisfy this gate. | TZ §13 "Gate criteria (locked)" |
 | 1.3 | Costs modeled both sides under the binding tariff | Layer-B verdict applied the configured tariff (`costs.investor_commission_bps`=30 **or** `costs.trader_commission_bps`=5 **+ `costs.trader_monthly_fee_rub`=390 modeled at 10k**) + `costs.slippage_bps`=10/side + `costs.min_commission_units/nano` floor + iceberg parity. | TZ §13; config §2.8 [verified] |
-| 1.4 | No-lookahead honored in the evidence | Signal computed only after the final D1 close per `config.close_definition`; entry next session; conservative both-side fills (entry fills only if day low ≤ limit; TP only if day high ≥ target; stop/MA-break gaps at the worse price). | TZ §13; frozen-decisions.md, "Strategy, data & backtest honesty" (no-lookahead + conservative-fills rows); db-schema §4 |
+| 1.4 | No-lookahead honored in the evidence | Signal computed only after the final D1 close per `config.close_definition=auction_close`; entry next session; conservative both-side fills (entry fills only if the next-session TTL window trades at/through the limit; D1-only fallback fills only at `D+1.open <= limit`; TP only if day high ≥ target; stop/MA-break gaps at the worse price; ambiguous same-bar stop/TP resolves to the worse outcome). | TZ §13; frozen-decisions.md, "Strategy, data & backtest honesty" (no-lookahead + conservative-fills rows); db-schema §4 |
 | 1.5 | Walk-forward / out-of-sample, not a single fit | `docs/evidence/walk-forward-latest.md` exists and records the rolling train/test result, robust params, **Deflated Sharpe with the recorded trial/config count**, and cost-sensitivity (commission / slippage / **fill-rate** break-even). A single in-sample backtest does **not** satisfy this gate. | TZ §13, §14; frozen-decisions.md, "Strategy, data & backtest honesty" (anti-overfitting row) |
 | 1.6 | M3 STOP gate cleared | The recorded **explicit PASS/FAIL decision** at the M3 STOP gate is **PASS** (edge survives costs). If FAIL, the live track is stopped — **this entire contract is unreachable**. | TZ §14; ROADMAP §M3 |
 
@@ -130,7 +130,7 @@ prerequisite per the "VPS before live confirm" decision (TZ §2; ROADMAP M6a).
 | 4.2 | Startup reconciliation proven | On startup/restart the bot reconciles positions+orders before trading (retry 3× 60/180/300s; require 2 consecutive clean checks); a persistent mismatch lands in `blocked_reconciliation_mismatch` (block new entries; monitoring on; **RISK exits allowed; PROFIT/target exits FORBIDDEN**). | TZ §8; frozen-decisions.md, "Strategy, data & backtest honesty" (state-machine row); db-schema §2 |
 | 4.3 | Backups | SQLite (local) / Postgres (VPS) DB backups + structured-log retention are configured and a restore has been test-run. | TZ §17 |
 | 4.4 | VPS prepared (before live) | VPS provisioned: Docker Compose, systemd/auto-restart, **SQLite→Postgres migration** at the documented `db_switch_point`, secret store, firewall, dashboard via SSH tunnel/VPN (**never public**), DR + secret-rotation runbook. | TZ §17; config §2.9 |
-| 4.5 | Close-definition / run-time coupling locked | `config.close_definition` is **[owner-ratified]** and `config.daily_run_time` is set after the implied final close, with the §3.1 config-load validation enforcing the no-lookahead coupling (a leaky combination is a startup-blocking error). | config §2.9, §3.1; TZ §17 [LAW: no-lookahead] |
+| 4.5 | Close-definition / run-time coupling locked | `config.close_definition=auction_close` and `config.daily_run_time=19:05 Europe/Moscow` (owner-ratified 2026-06-29), with the §3.1 config-load validation enforcing the no-lookahead coupling (a leaky combination is a startup-blocking error). | config §2.9, §3.1; TZ §17 [LAW: no-lookahead] |
 | 4.6 | `kill` / `pause` / `resume` semantics verified | Verified in sandbox/paper: `kill` stops the bot + cancels active orders **only — never sells**; `pause` blocks entries, cancels/cancel-requests still-live entry BUY orders, and keeps monitoring + exits/protective exit orders; `resume` requires extra confirmation + preflight. | frozen-decisions.md, "Order & risk rules" (kill/pause row); TZ §7; db-schema §2 |
 
 ---
@@ -208,10 +208,6 @@ owner_manual_approval ∈ {true, false}     # default false; set true ONLY by th
   the gate FAILs while the list is empty.
 - **[verify] Account-scoped token feasibility (Gate 3.5):** whether the bot-account product type supports
   account-scoped tokens (empirical at M4); else the documented fallback is the `account_id` guard.
-- **[owner-ratify] `close_definition` (Gate 4.5):** `auction_close` (recommended) vs `d1_candle_after_evening`
-  — the no-lookahead LAW surface; the owner ratifies, and `daily_run_time` is bound to it (config §2.9, §3.1).
-- **[verify] `daily_run_time` (Gate 4.5):** set after the final MOEX D1 close implied by `close_definition`
-  (auction close ≥ 18:50, ≥ 19:00 on/after `moex_auction_shift_date`).
 - **[owner-pending] Secret-storage backend (Gate 4.4):** Windows-local vs VPS secret store, OS keyring vs
   `.env` — decided before live (M6); the contract fixes only "env/secret store, never committed".
 

@@ -219,10 +219,10 @@ re-prompting interactively (the host runs unattended).
 - **Backup cadence, retention, and location [owner-pending]** — exact cadence beyond "daily + pre-migration", how
   long to retain, and local vs off-host (encrypted) destination (§6).
 - **Log retention / rotation policy [owner-pending]** — size/age limits for the ≥30-day unattended run (§7, R5.4).
-- **`daily_run_time` + `close_definition` [owner-ratify]** — set elsewhere
-  ([config-and-secrets.md](../contracts/config-and-secrets.md) §2.9/§6, TZ §17/§19); this spec only requires the
-  host to keep the scheduled fire honest. The no-lookahead LAW surface — owner must ratify; no canonical close
-  asserted here.
+- **Holiday/short-session handling for `daily_run_time=19:05` / `close_definition=auction_close` [verify]** —
+  the close/run pair is owner-ratified in [config-and-secrets.md](../contracts/config-and-secrets.md) §2.9; this
+  spec requires the host to keep the scheduled fire honest and to avoid firing before a shortened-session close
+  is actually available.
 - **db_switch_point (SQLite→Postgres) [verify/owner]** — documented switch at VPS/M6 (§8, R6.6); the local host
   stays SQLite for the whole window.
 - **VPS host details [owner-pending, deferred]** — provider/OS, systemd vs Docker Compose, firewall, DR + secret-

@@ -60,8 +60,8 @@ units/nano (see [db-schema](db-schema.md)). **[LAW]** values mirror frozen invar
 ### 2.3 Universe (managed registry — bot may not add tickers) [LAW]
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `universe.approved` | list[ticker] | `[SBER, T, GAZP, ROSN, TATN, X5]` | **[owner-pending confirm]** |
-| `universe.watch_only` | list[ticker] | `[IRAO, LKOH]` | **[owner-pending confirm]** |
+| `universe.approved` | list[ticker] | `[SBER, T, GAZP, ROSN, TATN, X5]` | **owner-ratified 2026-06-29** |
+| `universe.watch_only` | list[ticker] | `[IRAO, LKOH]` | **owner-ratified 2026-06-29** |
 | `universe.managed_only` | list[ticker] | `[]` | adopted manual positions |
 | `universe.blocked` | list[ticker] | `[]` | — |
 | `universe.pending` | list[ticker] | `[]` | monthly-review proposals (bot sets `pending`, never auto-`approved`) |
@@ -142,8 +142,8 @@ A failing `approved` ticker → `skipped` for the cycle (reason logged); **skip 
 | `index_source` | const | `moex_iss` | ✅ research `whq6u1gxe`: IMOEX **and** MCFTR daily candles via MOEX ISS (`engine=stock,market=index,interval=24`); T-Invest gives index *last price* only |
 | `data_conflict.close_divergence_pct` | float | `0.5` | flag if D1 close differs >0.5% T-Invest vs ISS [LAW: data truth] |
 | `data_conflict.recheck_delay_minutes` | int | `30` | transient → re-check; persistent → `data_conflict`, skip entry |
-| `daily_run_time` | string `HH:MM` | **[owner-pending]** | run after the **final** MOEX D1 close (see `close_definition`). Research `whq6u1gxe`: official close = main-session **auction** (18:40–18:50 MSK pre-23.03.2026; **18:55–19:00 from 23.03.2026**); evening session (~23:50) does *not* set it [LAW: no-lookahead] |
-| `close_definition` | enum `auction_close`\|`d1_candle_after_evening` | `auction_close` | **[owner-ratify]** auction close via `GetClosePrices`/`OrderBook.close_price` (final & lookahead-safe at 18:50/19:00) vs D1 candle close treated final only after ~23:50 — pick ONE for no-lookahead |
+| `daily_run_time` | string `HH:MM` | `19:05` | owner-ratified 2026-06-29; run after the **final** MOEX auction close in `Europe/Moscow` (≥19:00 on/after `moex_auction_shift_date`) [LAW: no-lookahead] |
+| `close_definition` | enum `auction_close`\|`d1_candle_after_evening` | `auction_close` | owner-ratified 2026-06-29; source the main-session auction close via `GetClosePrices`/`OrderBook.close_price`, not the GetCandles D1 close after the evening session |
 | `moex_auction_shift_date` | date | `2026-03-23` | closing auction moved to 18:55–19:00 from this date (schedule config) |
 | `dividend_gap_block_days` | int | `2` | no new entry 2 trading days pre-ex (see tax contract) |
 | `db_switch_point` | note | SQLite→Postgres at VPS/M6 | documented, not auto |
@@ -155,7 +155,8 @@ Before any sandbox/confirm/live action the config module + risk engine must:
 2. List broker accounts for the token; **refuse to start if multiple accounts exist and none exactly matches**
    `account_id` (no "pick the first" fallback).
 3. **Show account name + id on startup** (log + dashboard status) for human verification.
-4. **Require manual confirmation on any `account_id` change** between runs.
+4. **Require manual confirmation on any `account_id` change** between runs; persist the last-run id in the DB
+   singleton `guard_state` row (owner decision 2026-06-29), not in config or a sidecar file.
 5. Trade **only** the configured account; migrating to the main account needs manual approval.
 
 `paper` mode needs no broker account (no real orders). For **read-only market data** in paper mode, reuse a
@@ -201,9 +202,6 @@ The secret-scan gate (`tools/secret-scan.mjs`, run by the git hooks) treats as a
 ## 6. Owner-pending summary (raise before locking)
 - `tariff` (investor vs trader) — finalized M3; default `investor`.
 - `strategy.max_holding_days` — {20,40}; pinned after M3.
-- `close_definition` + `daily_run_time` — research gives the auction-close answer (`auction_close` recommended);
-  **owner must ratify** the close definition (it is the no-lookahead LAW surface).
-- `universe.approved` / `watch_only` final confirmation.
 - `telegram_user_whitelist` ids — needed by M5.
 - Secret-storage backend (local Windows vs VPS store) — decided before live (M6).
 - Bot-account product type (account-scoped token feasible? else rely on the guard) — [verify, empirical at M4].
@@ -214,11 +212,13 @@ The secret-scan gate (`tools/secret-scan.mjs`, run by the git hooks) treats as a
 
 ## 6a. Resolved by research `whq6u1gxe` (see References `2026-06-27-tinvest-moex-tax-verify`)
 - `index_source = moex_iss` (IMOEX + MCFTR via MOEX ISS; T-Invest = index last price only).
+- `universe.approved=[SBER,T,GAZP,ROSN,TATN,X5]`; `universe.watch_only=[IRAO,LKOH]` (owner-ratified 2026-06-29).
+- `close_definition=auction_close`; `daily_run_time=19:05 Europe/Moscow` (owner-ratified 2026-06-29).
 - **Build dependency (M0 pyproject, not a runtime key):** the Python SDK is **`t-tech-investments`**
   (latest 1.49.2, 2026-06-15) installed from T-Bank's **GitLab index**, NOT public PyPI
   (`--index-url https://opensource.tbank.ru/api/v4/projects/238/packages/pypi/simple`); legacy
   `tinkoff-investments` is quarantined. Pin the exact version at build time.
-- D1 close = the main-session **auction** close; default `close_definition=auction_close` (owner-ratify).
+- D1 close = the main-session **auction** close; default `close_definition=auction_close`.
 
 ## 7. Cross-references
 - Frozen LAW: `docs/frozen-decisions.md` (account guard, limits, token policy, limit-only).
