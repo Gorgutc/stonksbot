@@ -6,12 +6,13 @@
 > profile it activates (`dormant → active` when the milestone starts).
 
 ## Current state (2026-06-29)
-- **Phase:** **M0 authorized** → start implementation in the next session.
+- **Phase:** **M0 foundations in progress** on `codex/stonksbot-m0-foundations`.
 - **Done:** agent harness (`check-kit` currently reports 53 checks / 0 failed), Second Brain folder, frozen invariants, comprehensive TZ
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
-  Merged to `main` (latest verified `560aa2b` after PR #4).
-- **No bot code yet** — `research-backtest` is now **active** by owner decision; `broker-adapter` and
-  `execution-confirm` remain dormant. M0 is the first to write code.
+  Merged to `main` (latest verified `ca0c04e` after PR #5).
+- **Initial M0 code exists on this branch** — `research-backtest` is active; `broker-adapter` and
+  `execution-confirm` remain dormant. The current M0 scope is config, schema, account-guard stub,
+  and ruff/pytest verification only.
 - **Pre-M0 contract layer RESOLVED (2026-06-27 #3):** TZ §4.1/§5.1/§12.1 → `docs/contracts/`
   (config-and-secrets, db-schema, tax-and-dividends); `[verify]` gaps closed by research (index = MOEX ISS,
   SDK = `t-tech-investments` via GitLab, `GetDividends`, auction close, НДФЛ 13/15%); **secret-scan gate added**.
@@ -32,10 +33,11 @@
 ## Milestones
 
 ### M0 — Foundations  `[~]`  (activates: research-backtest)
-- [ ] pyproject, ruff, pytest, CI; `src/stonksbot/` skeleton (TZ §4)
-- [ ] **config/.env contract (TZ §4.1)** — pydantic settings, secret vs config keys, `.env.example` placeholders, **account_id guard** · *(design contract ✅ `docs/contracts/config-and-secrets.md`; code pending)*
-- [ ] **SQLite schema with DDL contract (TZ §5.1)** — Quotation units/nano (no float), epoch-ms UTC, PK/FK, CHECK enums (incl. `index` kind) + structured logging (audit-journal base) · *(design contract ✅ `docs/contracts/db-schema.md`; code pending)*
-- [ ] set `.agent-kit.json` `verify.fast = "ruff check . && pytest -q"`, `verify.deep = "pytest"`,
+- [x] pyproject, ruff, pytest; `src/stonksbot/` skeleton (TZ §4)
+- [ ] CI wiring
+- [x] **config/.env contract (TZ §4.1)** — pydantic settings, secret vs config keys, `.env.example` placeholders, **account_id guard** · *(design contract ✅ `docs/contracts/config-and-secrets.md`)*
+- [x] **SQLite schema with DDL contract (TZ §5.1)** — Quotation units/nano (no float), epoch-ms UTC, PK/FK, CHECK enums (incl. `index` kind) + structured logging (audit-journal base) · *(design contract ✅ `docs/contracts/db-schema.md`)*
+- [x] set `.agent-kit.json` `verify.fast = "ruff check . && pytest -q"`, `verify.deep = "pytest"`,
   `verify.ship = "pytest --maxfail=1 -q"`
 - **Exit:** `check-kit` green + `verify.fast`/`verify.deep`/`verify.ship` green; profile checklist "data schema recorded" checked.
 

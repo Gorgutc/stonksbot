@@ -31,7 +31,9 @@ share one canonical rule set. The full rules are imported below from `AGENTS.md`
 ## Multi-harness notes
 
 - `GEMINI.md` is a **redirect stub** pointing at `AGENTS.md`. Additional harnesses
-  get a stub only — never a duplicated rule set or a per-harness skill mirror.
+  get a stub only. Harness-specific skill files may exist only as exact mirrors
+  for tooling compatibility; `tools/check-kit.mjs` enforces parity so they are
+  not independent rule sets.
 - `CLAUDE.md` is richer than a stub because Claude Code has real `.claude/skills`
   and `.claude/agents` directories it auto-loads; Gemini does not, so it reads its
   rules from `AGENTS.md` prose.

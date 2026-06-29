@@ -67,13 +67,12 @@ explicit owner decision; record it as an ADR in the Second Brain `Decisions/` to
 | **State as an explicit machine with audit trail:** signal → proposal → confirm → order → (partial) fill → position → exit, with startup reconciliation and idempotent transitions; external/manual account changes are adopted via reconciliation, not treated as errors. | The expensive bugs live in state transitions, not in MA20/MA50. | `state-machine-discipline` skill, `risk-invariant-auditor` |
 
 ## Known drift / owner decisions pending
-- No bot code exists yet. Owner decision on 2026-06-29 starts M0 in the next
-  session and activates only the `research-backtest` profile; `broker-adapter` and
-  `execution-confirm` remain dormant. Until code/tests exist, "Enforced by …
-  tests/code" is aspirational and the skill/agent + human review are the live guard.
-  The named enforcers `pre_live_gates`, `account_guard`, and the various `*-tests`
-  are **future artifacts** — they do not exist yet; treat them as the contract the
-  implementation must create, not as wired guards.
+- M0 foundations now exist in the active `research-backtest` profile: Python
+  package skeleton, config loader, SQLite DDL, account-guard stub, and ruff/pytest
+  verification. `broker-adapter` and `execution-confirm` remain dormant. Many
+  named enforcers (`pre_live_gates`, full risk-engine tests, live account-scope
+  checks) are still future artifacts; treat them as the contract the later
+  implementation must create, not as wired guards today.
 - **Holding horizon:** the locked framing is **2–6 weeks** (max 8 without review); the
   early "2–5 days" idea is superseded. Exact `max_holding_days` still open (backtest
   grid 20/40 days).

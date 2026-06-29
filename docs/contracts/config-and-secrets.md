@@ -1,7 +1,8 @@
 # Contract — Configuration & Secrets (TZ §4.1)
 
-> **Status:** M0 contract, **resolved on paper (no code yet)**. This pins the irreversible
-> *shape* of configuration so the M0 `config/` module implements it verbatim.
+> **Status:** M0 contract, with the first `src/stonksbot/config.py` implementation
+> now present. This pins the irreversible *shape* of configuration so later M0+
+> changes keep the module aligned with the contract.
 > **`docs/frozen-decisions.md` 🔒 wins** on any conflict — values marked **[LAW]** mirror a frozen
 > invariant and may not be changed here (only via owner decision + ADR + same-change rule).
 > **[owner-pending]** = a value the owner must confirm before it is locked (do not silently fix it).

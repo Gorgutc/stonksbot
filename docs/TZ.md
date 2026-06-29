@@ -17,7 +17,7 @@
   weaken them. A genuine change requires an owner decision + an ADR + the same-change rule.
 - Build **milestone by milestone** (§3). A profile in `.agent-kit.json` flips `dormant → active` only
   when its milestone starts; `component-guardian` enforces "no toolchain until active".
-- **Resolve the M0 contract layer before writing M0 code:** §4.1 (config/secrets keys), §5.1 (schema DDL
+- **Keep M0 code aligned with the resolved contract layer:** §4.1 (config/secrets keys), §5.1 (schema DDL
   types/PK/FK/enums), §12.1 (tax/dividend rules) bake irreversible type/structure choices.
 - **[verify]** = re-check against live T-Invest docs/SDK before that code ships (full list §20).
 
@@ -39,7 +39,7 @@ Strategy timeframe stays **D1** (daily close, no intraday lookahead — frozen).
 | --- | --- |
 | Character | Laboratory (rich paper diagnostics + fast iteration; conservative live) |
 | Run environment | **Local (Windows) first** → VPS before live confirm |
-| M0 start | **M0 starts next session**; activate `research-backtest` only; keep `broker-adapter` + `execution-confirm` dormant |
+| M0 start | **M0 activated 2026-06-29**; `research-backtest` only; keep `broker-adapter` + `execution-confirm` dormant |
 | Tariff | Model **both** Инвестор (0.30%/side, **no monthly fee**) and Трейдер (0.05%/side **+ 390 ₽/mo**) in backtest; pick by cost-sensitivity (M3). **At 10k the 390 ₽/mo ≈ 47%/yr drag → Инвестор likely better.** M2 reports a verdict **per tariff** (provisional); M3 finalizes the binding tariff |
 | Universe | `approved` = SBER, T, GAZP, ROSN, TATN, X5; `watch_only` = IRAO, LKOH |
 | Daily close/run | `close_definition=auction_close`; `daily_run_time=19:05 Europe/Moscow` (owner-ratified 2026-06-29) |
@@ -80,14 +80,14 @@ GitLab simple-index (NOT PyPI; legacy `tinkoff-investments` is quarantined), pin
 version at build time *(resolved: ADR-0005 / research whq6u1gxe)*; pandas/numpy (research); pytest + hypothesis;
 ruff; structlog.
 
-**Layout (M0):**
+**Layout (current M0 foundation; later subpackages land with their milestones):**
 ```
 stonksbot/
-  pyproject.toml  .env.example  .ruff.toml
+  pyproject.toml  .env.example  config/config.toml
   src/stonksbot/
-    config/   data/   universe/   strategy/   backtest/   risk/
-    broker/   execution/   telegram/   dashboard/   journal/   reporting/   scheduler/
-  tests/      docs/evidence/
+    config.py   db.py   account_guard.py
+  tests/
+  docs/evidence/  # created with M3 walk-forward evidence
 ```
 
 ### 4.1 Configuration & secrets contract (resolve at M0)

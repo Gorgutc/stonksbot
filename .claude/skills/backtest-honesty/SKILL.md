@@ -10,8 +10,10 @@ overfit. Keep the research layer honest:
 
 1. **No lookahead.** A signal is computed only after the daily candle closes; entry
    is no earlier than the next session. No intraday peeking at the close.
-2. **Conservative fills — both sides.** A limit entry fills only if the day's low
-   actually reaches the limit price; unfilled = no trade; no price chasing; one order
+2. **Conservative fills — both sides.** A limit entry fills only if the
+   next-session order TTL window actually trades at/through the limit price; with
+   D1-only OHLC, fill only if `D+1.open <= limit` (whole-day low is not a valid
+   45-minute-order proxy). Unfilled = no trade; no price chasing; one order
    attempt/signal. Model EXITS just as conservatively: a take-profit limit sell fills
    only if the day's high reaches it; a stop / MA-break that gaps through the level
    fills at the realistic worse (gap) price, not the exact level; apply costs on the

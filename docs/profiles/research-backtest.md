@@ -33,11 +33,11 @@ trading at all* — it must exist and pass before any live profile is activated.
   Telegram execution, live/sandbox trading, or the `broker-adapter` /
   `execution-confirm` profiles.
 
-## Active toolchain (when active)
-Intended for M0/M1/M2: Python 3.12+, pandas/numpy, pytest (+ hypothesis
-selectively), ruff. Set `.agent-kit.json` `verify.fast`/`verify.deep`/`verify.ship`
-when the first M0 `pyproject.toml` and tests land; this readiness branch keeps
-those commands null because no package exists yet.
+## Active toolchain
+Current M0: Python 3.12+, pydantic-settings, pytest, ruff. `.agent-kit.json`
+now sets `verify.fast = "ruff check . && pytest -q"`, `verify.deep = "pytest"`,
+and `verify.ship = "pytest --maxfail=1 -q"`. Add research-only dependencies such
+as pandas/numpy/hypothesis only when the data/backtest code needs them.
 
 ## Decision checklist (fill when activated)
 - [x] owner activated M0 / research-backtest start (2026-06-29)
