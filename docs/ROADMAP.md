@@ -6,10 +6,10 @@
 > profile it activates (`dormant → active` when the milestone starts).
 
 ## Current state (2026-06-29)
-- **Phase:** **M0 foundations shipped** — PR #6 merged into `main@695ad32`. CI wired in this branch (verify + harness gates on PR/main).
+- **Phase:** **M0 complete** — CI shipped in PR #7 (merged `main@14dadb4`); foundations in PR #6. Verify + harness gates run on PR/main.
 - **Done:** agent harness (`check-kit` currently reports 53 checks / 0 failed), Second Brain folder, frozen invariants, comprehensive TZ
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
-  Merged to `main` (latest verified `695ad32` after PR #6; PR #5 closed the pre-M0 readiness layer).
+  Merged to `main` (latest verified `14dadb4` after PR #7; PR #6 shipped the M0 skeleton, PR #5 the pre-M0 readiness layer).
 - **Initial M0 code shipped** — `research-backtest` is active; `broker-adapter` and
   `execution-confirm` remain dormant. The shipped M0 scope is config, schema, account-guard stub,
   and ruff/pytest verification only.
@@ -32,7 +32,7 @@
 
 ## Milestones
 
-### M0 — Foundations  `[~]`  (activates: research-backtest)
+### M0 — Foundations  `[x]`  (activates: research-backtest)
 - [x] pyproject, ruff, pytest; `src/stonksbot/` skeleton (TZ §4)
 - [x] CI wiring — `.github/workflows/ci.yml` (ruff + pytest + check-kit + test-gates + secret-scan + evidence-gate, on PR/main)
 - [x] **config/.env contract (TZ §4.1)** — pydantic settings, secret vs config keys, `.env.example` placeholders, **account_id guard** · *(design contract ✅ `docs/contracts/config-and-secrets.md`)*
@@ -42,10 +42,10 @@
 - **Exit:** `check-kit` green + `verify.fast`/`verify.deep`/`verify.ship` green; profile checklist "data schema recorded" checked.
 
 ### M1 — Data layer  `[ ]`  (research-backtest)
-- [ ] T-Invest read-only + MOEX ISS fallback/cross-check; `candles` + `instrument_reference` (uid-keyed) **+ index series** (IMOEX/MCFTR — source [verify before M1])
+- [ ] T-Invest read-only + MOEX ISS fallback/cross-check; `candles` + `instrument_reference` (uid-keyed) **+ index series** (IMOEX/MCFTR — MOEX ISS, ADR-0005)
 - [ ] **universe registry + status transitions** (managed-registry invariant); eligibility filters
 - [ ] snapshot versioning; **`data_conflict` DETECTION/flagging tested** (historical/synthetic; live skip-entry asserted in M4)
-- [ ] split adjustment + ticker-history (TCSG→T) + dividend calendar (source [verify])
+- [ ] split adjustment + ticker-history (TCSG→T) + dividend calendar (T-Invest GetDividends, ADR-0005)
 - **Exit:** reproducible versioned 3y dataset (+ warm-up) incl. index; detection path tested.
 
 ### M2 — Strategy + honest backtest  `[ ]`  (research-backtest)

@@ -7,11 +7,11 @@ tiny **dedicated** account in **confirm mode** — the bot proposes an entry, th
 confirms in Telegram, and protective exits are automated. Codex/Claude build, review,
 and document the system; they never decide buy/sell.
 
-> **Status: M0 foundations shipped** (PR #6, `main@695ad32`). The active
-> `research-backtest` profile now has the Python skeleton — config loader, SQLite
-> DDL/bootstrap, and a fail-closed account-guard stub with pytest coverage. Next:
-> CI wiring (the last M0 exit item) and the M1 data layer. Broker/execution
-> profiles remain dormant.
+> **Status: M0 complete** (PR #7 merged, `main@14dadb4`). The active
+> `research-backtest` profile has the Python skeleton — config loader, SQLite
+> DDL/bootstrap, and a fail-closed account-guard stub with pytest coverage — plus
+> CI (`.github/workflows/ci.yml`, verify + harness gates on PR/main). Next: the M1
+> data layer. Broker/execution profiles remain dormant.
 
 ## Read first
 - `AGENTS.md` — single source of truth for every agent harness (see PROJECT SPECIFICS).
