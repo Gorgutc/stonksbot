@@ -6,12 +6,12 @@
 > profile it activates (`dormant → active` when the milestone starts).
 
 ## Current state (2026-06-29)
-- **Phase:** **M0 foundations in progress** on `codex/stonksbot-m0-foundations`.
+- **Phase:** **M0 foundations shipped** — PR #6 merged into `main@695ad32`. CI wired in this branch (verify + harness gates on PR/main).
 - **Done:** agent harness (`check-kit` currently reports 53 checks / 0 failed), Second Brain folder, frozen invariants, comprehensive TZ
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
-  Merged to `main` (latest verified `ca0c04e` after PR #5).
-- **Initial M0 code exists on this branch** — `research-backtest` is active; `broker-adapter` and
-  `execution-confirm` remain dormant. The current M0 scope is config, schema, account-guard stub,
+  Merged to `main` (latest verified `695ad32` after PR #6; PR #5 closed the pre-M0 readiness layer).
+- **Initial M0 code shipped** — `research-backtest` is active; `broker-adapter` and
+  `execution-confirm` remain dormant. The shipped M0 scope is config, schema, account-guard stub,
   and ruff/pytest verification only.
 - **Pre-M0 contract layer RESOLVED (2026-06-27 #3):** TZ §4.1/§5.1/§12.1 → `docs/contracts/`
   (config-and-secrets, db-schema, tax-and-dividends); `[verify]` gaps closed by research (index = MOEX ISS,
@@ -24,7 +24,7 @@
   account-guard-split, tax-open-questions, tax-fixture, local-deployment, vps-deployment) — design only, no code;
   passed a 20-agent adversarial audit + `/code-review`. Owner-pending / no-lookahead surfaces were kept as
   placeholders until the 2026-06-29 owner bundle below.
-- **Owner decisions for M0 start (2026-06-29):** M0 starts next session; `research-backtest` active;
+- **Owner decisions for M0 start (2026-06-29):** M0 authorized (now shipped in PR #6); `research-backtest` active;
   `close_definition=auction_close`; `daily_run_time=19:05 Europe/Moscow`;
   `universe.approved=[SBER,T,GAZP,ROSN,TATN,X5]`; `universe.watch_only=[IRAO,LKOH]`;
   account/token feasibility is **not** an M0 blocker (fail-closed stubs now, live scope check at M4);
@@ -34,7 +34,7 @@
 
 ### M0 — Foundations  `[~]`  (activates: research-backtest)
 - [x] pyproject, ruff, pytest; `src/stonksbot/` skeleton (TZ §4)
-- [ ] CI wiring
+- [x] CI wiring — `.github/workflows/ci.yml` (ruff + pytest + check-kit + test-gates + secret-scan + evidence-gate, on PR/main)
 - [x] **config/.env contract (TZ §4.1)** — pydantic settings, secret vs config keys, `.env.example` placeholders, **account_id guard** · *(design contract ✅ `docs/contracts/config-and-secrets.md`)*
 - [x] **SQLite schema with DDL contract (TZ §5.1)** — Quotation units/nano (no float), epoch-ms UTC, PK/FK, CHECK enums (incl. `index` kind) + structured logging (audit-journal base) · *(design contract ✅ `docs/contracts/db-schema.md`)*
 - [x] set `.agent-kit.json` `verify.fast = "ruff check . && pytest -q"`, `verify.deep = "pytest"`,

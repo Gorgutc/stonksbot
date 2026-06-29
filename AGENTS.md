@@ -182,10 +182,11 @@ ruff check . && pytest -q                             # project verify.fast
   tests it, then trades a tiny **dedicated** account in **confirm mode** (bot
   proposes an entry, the human confirms in Telegram; protective exits are
   automated). Codex/Claude BUILD, review, and document — **never** decide buy/sell.
-- **Status:** M0 FOUNDATIONS IN PROGRESS. Owner decision on 2026-06-29 activated
-  only the `research-backtest` profile after `main@ca0c04e` / PR #5 completed
-  readiness. This branch introduces the Python research/backtest package,
+- **Status:** M0 FOUNDATIONS SHIPPED (PR #6, `main@695ad32`). Owner decision on
+  2026-06-29 activated only the `research-backtest` profile after `main@ca0c04e` /
+  PR #5 completed readiness; PR #6 then landed the Python research/backtest package,
   config loader, SQLite DDL, account-guard stub, and ruff/pytest verification.
+  The last open M0 exit item is CI wiring; M1 (data layer) is the next slice.
   `broker-adapter` and `execution-confirm` remain **dormant** — introduce no broker order placement, Telegram execution,
   live/sandbox trading dependency, or build command for those profiles without an
   explicit activation request (see `component-guardian` + `docs/profiles/`). The
