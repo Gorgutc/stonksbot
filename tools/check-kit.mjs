@@ -11,6 +11,7 @@
 //   - hook scripts referenced by .codex/hooks.json and .claude/settings.json exist
 //   - the orchestrator and its example specs are present and valid
 //   - every .claude/skills/*/SKILL.md has name+description frontmatter
+//   - .agents/skills mirrors .claude/skills exactly
 //   - declared component profiles have a valid status and an existing doc
 //   - no .agent-kit.json forbiddenTerms appear in active instruction/skill files
 //
@@ -40,6 +41,14 @@ function listFiles(relDir, ext) {
   const dir = path.join(ROOT, relDir);
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir).filter((f) => f.endsWith(ext));
+}
+function listDirs(relDir) {
+  const dir = path.join(ROOT, relDir);
+  if (!fs.existsSync(dir)) return [];
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name);
 }
 function tomlValue(text, key) {
   const m = text.match(new RegExp(`^${key}\\s*=\\s*"([^"]*)"`, "m"));
@@ -160,8 +169,10 @@ for (const spec of listFiles("tools/codex-orchestrator/examples", ".json")) {
 
 // --- skills frontmatter ---
 const skillsDir = path.join(ROOT, ".claude/skills");
+const claudeSkillNames = new Set();
 if (fs.existsSync(skillsDir)) {
-  for (const name of fs.readdirSync(skillsDir)) {
+  for (const name of listDirs(".claude/skills")) {
+    claudeSkillNames.add(name);
     const rel = path.join(".claude/skills", name, "SKILL.md");
     if (!exists(rel)) {
       fail(`${rel} missing`);
@@ -171,6 +182,25 @@ if (fs.existsSync(skillsDir)) {
     if (!fm.name || !fm.description) fail(`${rel}: needs name + description frontmatter`);
     else ok(`skill ${fm.name}`);
   }
+}
+
+// --- skill mirror parity: .claude/skills <-> .agents/skills ---
+const agentSkillNames = new Set(listDirs(".agents/skills"));
+for (const name of claudeSkillNames) {
+  const claudeRel = path.join(".claude/skills", name, "SKILL.md");
+  const agentRel = path.join(".agents/skills", name, "SKILL.md");
+  if (!exists(agentRel)) {
+    fail(`${agentRel} missing (mirror of ${claudeRel})`);
+    continue;
+  }
+  if (read(agentRel) !== read(claudeRel)) {
+    fail(`${agentRel} differs from ${claudeRel}`);
+  } else {
+    ok(`skill mirror ${name}`);
+  }
+}
+for (const name of agentSkillNames) {
+  if (!claudeSkillNames.has(name)) fail(`.agents/skills/${name}/SKILL.md: orphan (no matching .claude skill)`);
 }
 
 // --- component profiles (optional) ---
@@ -203,6 +233,10 @@ if (terms.length) {
       const rel = `.claude/skills/${n}/SKILL.md`;
       if (exists(rel)) active.push(rel);
     }
+  }
+  for (const n of listDirs(".agents/skills")) {
+    const rel = `.agents/skills/${n}/SKILL.md`;
+    if (exists(rel)) active.push(rel);
   }
   for (const f of listFiles(".codex/agents", ".toml")) active.push(`.codex/agents/${f}`);
   for (const f of listFiles(".claude/agents", ".md")) active.push(`.claude/agents/${f}`);

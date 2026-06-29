@@ -39,8 +39,10 @@ Strategy timeframe stays **D1** (daily close, no intraday lookahead — frozen).
 | --- | --- |
 | Character | Laboratory (rich paper diagnostics + fast iteration; conservative live) |
 | Run environment | **Local (Windows) first** → VPS before live confirm |
+| M0 start | **M0 starts next session**; activate `research-backtest` only; keep `broker-adapter` + `execution-confirm` dormant |
 | Tariff | Model **both** Инвестор (0.30%/side, **no monthly fee**) and Трейдер (0.05%/side **+ 390 ₽/mo**) in backtest; pick by cost-sensitivity (M3). **At 10k the 390 ₽/mo ≈ 47%/yr drag → Инвестор likely better.** M2 reports a verdict **per tariff** (provisional); M3 finalizes the binding tariff |
 | Universe | `approved` = SBER, T, GAZP, ROSN, TATN, X5; `watch_only` = IRAO, LKOH |
+| Daily close/run | `close_definition=auction_close`; `daily_run_time=19:05 Europe/Moscow` (owner-ratified 2026-06-29) |
 | Holding horizon | **2–6 weeks base, max 8 weeks without review** (frozen; supersedes the early "2–5 days"). `max_holding_days` grid {20, 40} D1 bars realizes this (40 bars ≈ 8 weeks) |
 | Secrets | `.env` (git-ignored) + env vars locally; secret store/env on VPS |
 | Dashboard | **Local FastAPI dashboard from the start** (127.0.0.1, read-only observability; bounded MVP cut-line §11) |
@@ -158,13 +160,16 @@ Concept: **pullback inside an uptrend** (D1). Pure function (the only place stra
 ## 7. Risk engine
 Enforces every frozen invariant. In order:
 1. **Pre-checks:** account_id guard (refuse to start if missing/ambiguous); mode not pause/kill/blocked;
-   market-regime (no entry if IMOEX close < MA50 or 5d return < −5%); session = `NORMAL_TRADING` only for
-   entries (**DEALER_NORMAL_TRADING and auction states are NOT eligible** — §9); `data_conflict` → skip entry.
+   market-regime (no entry if IMOEX close < MA50 or 5d return < −5%); `data_conflict` → skip entry.
+   The live session gate (`NORMAL_TRADING` only; **DEALER_NORMAL_TRADING and auction states are NOT eligible** —
+   §9) is re-read at confirm/preflight immediately before order submission, not during the 19:05 post-close
+   selection cycle that only creates next-session proposals.
 2. **Hard order rules (reject, never emit otherwise):** **LIMIT only** — `ORDER_TYPE_MARKET` and
    `ORDER_TYPE_BESTPRICE` are hard-rejected; **never set `confirmMarginTrade=true` (no margin)**; **long-only —
    reject any SELL exceeding held qty (no shorts).**
 3. **Eligibility filters** (config): max lot value 30%, max spread 0.50%, min turnover 50M ₽, min trading
-   days 40, trading-status + candles required → else `skipped` (skip ≠ remove from approved).
+   days 40, complete candles required, plus instrument tradability/availability → else `skipped`
+   (skip ≠ remove from approved). The submit-time session state is checked in preflight.
 4. **Sizing:** `risk_per_lot = |entry−stop| × lot`; `lots = floor(allowed_risk / risk_per_lot)`; clamp by max
    position (3000 ₽ / 30%), cash, lot, `min_price_increment`. Risk/trade 50 ₽ is a **soft** sizing ref (a
    literal 50 ₽ stop ≈ 1.5–2% would be whipsawed by D1 noise); hard stop ≈4%.
@@ -260,8 +265,10 @@ Close button must land **before** any dashboard polish. Mutating controls stay i
 - **History:** 3 years D1 for approved + index, **plus a warm-up of ~100 leading bars** (MA50/MA100 + index
   MA50 regime consume up to ~100 D1 bars; load extra history so the first tradable day is not starved).
 - **Honest fills (both sides):** entry limit placed at reference + ≤0.20% (mirrors §8: single attempt, TTL =
-  no trade) → fills only if day low ≤ limit; **exits modeled just as conservatively** (TP sell only if day
-  high ≥ target; stop/MA-break gapping fills at the worse gap price); unfilled = no trade.
+  no trade) → fills only if the next-session order TTL window trades at/through the limit; with D1-only data,
+  pessimistic fallback is `D+1.open <= limit` else unfilled (whole-day low is not a valid ~45-minute TTL proxy);
+  **exits modeled just as conservatively** (TP sell only if day high ≥ target; stop/MA-break gapping fills at
+  the worse gap price; ambiguous same-bar stop/TP resolves to the worse outcome); unfilled = no trade.
 - **Costs (config, not constants):** **both tariffs** — Инвестор 0.30%/side (no monthly fee), Трейдер
   0.05%/side **+ 390 ₽/mo** (waived only at no-trades / ≥1.5M assets / ≥5M turnover — **at 10k the monthly fee
   must be modeled**) + 0.10%/side slippage. Iceberg +0.01%/side. Min commission 0.01 ₽. [verified §20]
@@ -301,12 +308,10 @@ never sells. **1 open position is a pilot limit** (expansion is a separate post-
 ## 17. Deployment (local → VPS)
 - **Local (Windows) first:** prevent host sleep, process supervisor/watchdog (auto-restart), NTP/time sync,
   SQLite backups, structured logs. The ≥30-day paper window runs here.
-- **Daily-run time vs the evening session:** MOEX now has an **evening session to ~23:50 MSK**; the D1 bar is
-  not final at 19:00 if evening trades print to it. **Decide and document whether the acted-on D1 close
-  includes the evening session, and set the run time after the *final* close accordingly** (bears directly on
-  the no-intraday-lookahead invariant). [verify §20]
-  - **`close_definition` (OWNER-PENDING):** `auction_close` vs `d1_candle_after_evening` is still owner-ratify —
-    see `docs/contracts/config-and-secrets.md` §6a (no-lookahead LAW surface; no canonical close asserted here).
+- **Daily-run time:** `close_definition=auction_close`, `daily_run_time=19:05 Europe/Moscow` (owner-ratified
+  2026-06-29). The acted-on D1 close is the main-session auction close via `GetClosePrices` /
+  `OrderBook.close_price`, not the GetCandles D1 close after the evening session. The evening-session effect on
+  provider D1 candles remains a data-layer [verify §20] check, but it is not the M0 decision source.
 - **VPS (prepared in parallel, before the live gate):** Docker Compose, systemd/auto-restart, **Postgres
   migration** (keep the SQLite→Postgres switch point explicit), secret store, firewall, dashboard via SSH
   tunnel/VPN (never public), DB+log backups, disaster-recovery + secret-rotation runbook. Provision M6a in
@@ -323,7 +328,8 @@ generated D1 candles → strategy/risk invariants hold. `lookahead-auditor` + `r
 - **Index data source:** **MOEX ISS** (`index_source=moex_iss`) — IMOEX **and** MCFTR daily candles via
   MOEX ISS; T-Invest gives index *last price* only. Same answer as config-and-secrets §6a
   *(resolved: ADR-0005 / research whq6u1gxe)*.
-- **Daily-run time** + whether D1 close includes the evening session (§17). Holiday/short-session handling.
+- Holiday/short-session handling for `daily_run_time=19:05` / `auction_close` (§17). Evening-session effect on
+  provider D1 candles remains [verify].
 - `data_conflict` exact threshold (default §5.1). DB switch point SQLite→Postgres (VPS/M6).
 - Dividend calendar + split corporate-action **sources** (§20). Ticker-history stitching (TCSG→T).
 - NDFL bracket application + lot-accounting fixture (§12.1). Bot-account product type (account-scoping feasible?).

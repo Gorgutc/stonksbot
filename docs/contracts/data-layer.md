@@ -28,7 +28,7 @@ engine's `data_conflict` / staleness skip gate (TZ §7.1); and the `instrument_r
 | # | Source | Role | What it provides | Provenance |
 | --- | --- | --- | --- | --- |
 | 1 | **T-Invest API** (`t-tech-investments` SDK, gRPC) | **PRIMARY** | share D1 candles (`GetCandles`), instrument reference (`InstrumentsService`), dividends (`GetDividends`), trading status, `min_price_increment`, lot | TZ §9, §20 [verified] |
-| 1a | **T-Invest API** — auction close (`GetClosePrices` / `OrderBook.close_price`) | PRIMARY (close source, **owner-ratify**) | the main-session auction close that defines `close_definition=auction_close` (§4) | TZ §20 [verify] — the MOEX evening-session effect on the final D1 close is must-verify; close source is owner-ratify (§4, [config-and-secrets.md](config-and-secrets.md) §6a) |
+| 1a | **T-Invest API** — auction close (`GetClosePrices` / `OrderBook.close_price`) | PRIMARY (close source, **owner-ratified 2026-06-29**) | the main-session auction close that defines `close_definition=auction_close` (§4) | TZ §20 [verify] — the MOEX evening-session effect on provider D1 candles is must-verify; the decision close source is ratified (§4, [config-and-secrets.md](config-and-secrets.md) §6a) |
 | 2 | **MOEX ISS** | **FALLBACK + CROSS-CHECK** for shares; **PRIMARY** for indices & corp-actions | IMOEX + MCFTR D1 candles; splits / corp-actions / renames; cross-check D1 close for shares | ADR-0005 + research `whq6u1gxe` |
 
 **Data-truth [LAW] (frozen-decisions.md, "Strategy, data & backtest honesty" (data truth row), TZ §5):** primary = T-Invest; fallback + cross-check = MOEX ISS. On a
@@ -128,17 +128,16 @@ checks (§3.5, §5.2) apply. A missing index bar that the market-regime filter n
 ## 4. No-lookahead completeness gate [LAW: signal after final close] (TZ §5.1, §6, §17)
 
 - `candles.is_complete = 1` **only** when the bar carries the **final** close defined by
-  `config.close_definition` (enum `auction_close | d1_candle_after_evening`, [config-and-secrets.md](config-and-secrets.md) §2.9):
+  `config.close_definition` (`auction_close`, owner-ratified 2026-06-29; the enum also names
+  `d1_candle_after_evening` for a future owner-approved change, [config-and-secrets.md](config-and-secrets.md) §2.9):
   - `auction_close` → the main-session **auction close** from `GetClosePrices` / `OrderBook.close_price`,
     captured at/after **18:50 MSK** (**19:00 from `moex_auction_shift_date` = 2026-03-23**).
   - `d1_candle_after_evening` → the `GetCandles` D1 close re-read after **~23:50 MSK** once the evening session
     has printed.
 - The data layer **asserts the close source matches `close_definition`** before setting `is_complete=1`; a
   mismatch is a hard error, never a silent set. A signal may be computed **only** on an `is_complete=1` bar.
-- `close_definition` is **[owner-ratify]** — research recommends `auction_close`; this contract does **not**
-  assert a final value (it is the no-lookahead LAW surface; config-and-secrets §6a owns the ratification).
 - **[verify] (M1, empirical):** does the T-Invest GetCandles D1 `close` include the evening session? Snapshot
-  19:00 vs 23:50 on a known day. Until this passes, prefer `auction_close` (db-schema §4).
+  19:00 vs 23:50 on a known day. This does not block M0 while `auction_close` remains the ratified source.
 
 ## 5. `data_conflict` detection state machine [LAW: data truth]
 
@@ -270,14 +269,10 @@ duplicate_bar    : two distinct bars share the same (instrument_uid, interval, t
   already-adjusted bar would double-adjust. Verify on a known split before any backtest use.
 - **[verify] (empirical — M4):** does a **rename change the T-Invest `instrument_uid`**? The contract treats
   **ISIN as the stable stitch key** (§2, §6.2); confirm uid continuity vs. a re-stitched fresh uid at integration.
-- **[owner-ratify]** `close_definition` (`auction_close` vs `d1_candle_after_evening`) — the no-lookahead LAW
-  surface; owned by [config-and-secrets.md](config-and-secrets.md) §6a, not asserted here (§4).
 - **[verify] (empirical — M1):** does the T-Invest GetCandles D1 `close` include the **evening session**?
-  (Snapshot 19:00 vs 23:50.) Prefer `auction_close` until resolved (§4).
+  (Snapshot 19:00 vs 23:50.) Informational under the ratified `auction_close` source (§4).
 - **[verify] (M4):** MOEX ISS corp-action / split / changeover endpoint coverage + anonymous availability per
   ticker (§6.2).
-- **[owner-pending]** `daily_run_time` — must be ≥ the final close implied by `close_definition`
-  ([config-and-secrets.md](config-and-secrets.md) §2.9, §3.1); a leaky combination is a startup-blocking error.
 
 ## 11. Cross-references
 - Frozen LAW: `docs/frozen-decisions.md` (data truth, managed registry, no-lookahead, no-float, idempotency).

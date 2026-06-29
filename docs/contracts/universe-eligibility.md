@@ -79,6 +79,8 @@ The committed config lists (`universe.*`, [config-and-secrets.md](config-and-sec
 
 A ticker must appear in **at most one** list; the loader hard-fails on a ticker present in two lists
 (ambiguous status is a config error, not a silently-resolved default).
+The owner-ratified M0 lists are `universe.approved=[SBER,T,GAZP,ROSN,TATN,X5]` and
+`universe.watch_only=[IRAO,LKOH]` (2026-06-29).
 
 ## 3. Per-cycle eligibility filter (TZ §5, §6, §7.3) [LAW: starting values]
 
@@ -88,21 +90,19 @@ is recorded as `signals.decision='skipped'` with the matching `signals.reason` c
 proposal that cycle. A ticker passing **all** checks is eligible to be ranked (TZ §6) for the ≤1 daily
 proposal.
 
-> **Note — no canonical close asserted.** `close_definition` (`auction_close` vs `d1_candle_after_evening`) is
-> **[owner-ratify]** and `daily_run_time` is **[owner-pending]** (config §2.9). This contract consumes whatever
-> final-close convention the owner ratifies; it does **not** pick one. "After the final D1 close" means *after
-> the close defined by the ratified `close_definition`* — the no-lookahead surface, not a hard-coded time.
+> **Close convention ratified.** `close_definition=auction_close` and `daily_run_time=19:05 Europe/Moscow`
+> (owner decision 2026-06-29, config §2.9). "After the final D1 close" means after the main-session auction
+> close source, not after the evening GetCandles D1 close.
 
 ### 3.1 Filter checks (config thresholds — [config-and-secrets.md](config-and-secrets.md) §2.4)
 
-> **Trading-status and data_conflict are step-1 pre-checks, not eligibility filters.** Per TZ §7 the
-> `session = NORMAL_TRADING` gate (`risk.allowed_trading_status`; DEALER_NORMAL_TRADING + auction states
-> excluded) and the `data_conflict → skip entry` gate run in **step 1** (pre-checks) and, on failure, emit
-> `signals.decision='skipped'` with reason `not_trading` / `data_conflict` (§4) **before** this filter runs.
-> The data_conflict pre-check **reads** `instrument_reference.data_status` (set by the data layer per
-> `data_conflict.close_divergence_pct`, config §2.9) — it does **not** re-compute the threshold. These two gates
-> are therefore **not** repeated here — this §3.1 filter is the **step-3** economic-fit + candle-presence pass.
-> (Each gate is pinned to exactly one engine step; see §5.)
+> **Data_conflict is a post-close pre-check; live session status is submit-time.** Per TZ §7/§8 the
+> `data_conflict → skip entry` gate runs before this filter and emits `signals.decision='skipped'` with
+> reason `data_conflict` (§4). The live `session = NORMAL_TRADING` gate
+> (`risk.allowed_trading_status`; DEALER_NORMAL_TRADING + auction states excluded) is **not** run during the
+> post-close daily selection cycle because no order is submitted there. It is re-read in confirm/preflight
+> immediately before entry order submission; a failure rejects the proposal rather than rewriting a selected
+> signal to `skipped`.
 
 | # | Check | Config key | Starting value | Fail → skip reason |
 | --- | --- | --- | --- | --- |
@@ -119,17 +119,17 @@ already stored on `instrument_reference`.
 ### 3.2 Evaluation order & reason precedence (deterministic)
 
 The filter is **fail-fast in a fixed order** so the recorded skip reason is deterministic and a single,
-defensible cause is logged per cycle. Within §3.1 the order = the table above: **1 → 5**. The two **step-1
-pre-checks** (`not_trading`, `data_conflict`) run earlier in the engine (step 1, §5) and therefore **dominate**
+defensible cause is logged per cycle. Within §3.1 the order = the table above: **1 → 5**. The step-1
+data-truth pre-check (`data_conflict`) runs earlier in the engine (step 1, §5) and therefore **dominates**
 every step-3 eligibility reason — the overall per-cycle precedence is:
 
 ```
-not_trading  >  data_conflict  >  data_missing  >  low_liquidity  >  wide_spread  >  lot_too_expensive
-└──────── step-1 pre-checks ────────┘  └──────────────── step-3 eligibility filter (§3.1) ────────────────┘
+data_conflict  >  data_missing  >  low_liquidity  >  wide_spread  >  lot_too_expensive
+└ step-1 data-truth pre-check ┘  └────────────── step-3 eligibility filter (§3.1) ──────────────┘
 ```
 
-Rationale: data/tradability problems (the ticker can't be traded or trusted *at all*) dominate
-economic-fit problems (too illiquid / too wide / too expensive). The first failing check wins; remaining
+Rationale: data problems (the ticker can't be trusted *at all*) dominate economic-fit problems
+(too illiquid / too wide / too expensive). The first failing check wins; remaining
 checks are not evaluated. (Implementation note: this ordering is the contract — do not reorder without an
 owner decision, since it changes which reason is journaled.)
 
@@ -142,8 +142,8 @@ owner decision, since it changes which reason is journaled.)
   warm-up agree. The research-grid MA100 (~100 bars) is **not** the live gate — it only sizes the **backtest**
   leading-history load (TZ §13: load ~100 leading bars so the first tradable day is not starved). A ticker
   without enough warm-up history → `data_missing`.
-- Eligibility is computed **only from closed bars** (`candles.is_complete=1`, per `close_definition`
-  ([owner-ratify], config §2.9) — see §3 note) — the filter must not read an in-progress bar. This inherits the
+- Eligibility is computed **only from closed bars** (`candles.is_complete=1`, per ratified
+  `close_definition=auction_close`, config §2.9 — see §3 note) — the filter must not read an in-progress bar. This inherits the
   **no-intraday-lookahead** LAW ([db-schema.md](db-schema.md) §4; frozen-decisions.md, "Strategy, data &
   backtest honesty" (no-lookahead row)).
 - Newly-approved tickers (`first_1day_candle_date` too recent for warm-up) skip with `data_missing` until
@@ -160,7 +160,7 @@ signals.reason (skip codes) ∈ {
   lot_too_expensive,   -- lot × price exceeds eligibility.max_lot_value_pct of capital
   low_liquidity,       -- avg turnover < min_turnover_rub OR traded days < min_trading_days
   wide_spread,         -- spread_bps > eligibility.max_spread_bps
-  not_trading,         -- trading_status != NORMAL_TRADING (incl. DEALER/auction)
+  not_trading,         -- instrument is not generally tradable/available; live session failures reject proposals in preflight
   data_missing,        -- required candles absent / incomplete / insufficient warm-up
   data_conflict        -- instrument_reference.data_status = 'data_conflict'
 }
@@ -183,13 +183,14 @@ Notes:
 
 Per TZ §7 the risk engine runs, in order: **pre-checks → hard order rules → eligibility filters → sizing →
 limits → re-entry → exits → controls**. Eligibility (this contract, §3) is **step 3** — it runs **after**
-the account/mode/market-regime/session/`data_conflict` pre-checks and the LIMIT-only / no-margin / long-only
+the account/mode/market-regime/`data_conflict` pre-checks and the LIMIT-only / no-margin / long-only
 hard rules, and **before** sizing. Consequences:
 
-- The **`not_trading`** (session ≠ `NORMAL_TRADING`) and **`data_conflict`** skips are emitted by the **step-1
-  pre-checks** (TZ §7 step 1: session gate + `data_conflict → skip entry`), not by this §3.1 filter — they
-  short-circuit the cycle before eligibility runs (§3.1 note, §3.2). The §3.1 filter owns only the step-3 reasons
-  `data_missing` / `low_liquidity` / `wide_spread` / `lot_too_expensive`.
+- The **`data_conflict`** skip is emitted by the **step-1 data-truth pre-check**, not by this §3.1 filter — it
+  short-circuits the cycle before eligibility runs (§3.1 note, §3.2). The live session gate (`NORMAL_TRADING`)
+  runs in preflight/submit, not in the post-close eligibility pass. The §3.1 filter owns the step-3 reasons
+  `data_missing` / `low_liquidity` / `wide_spread` / `lot_too_expensive`; `not_trading` is reserved for
+  non-session tradability/unavailability cases.
 - A ticker that fails eligibility is `skipped` and never reaches sizing — so it can never consume the
   ≤1-proposal/day budget or a position slot.
 - Eligibility does **not** override the registry: a `blocked` / `watch_only` / `managed_only` /`pending`
@@ -222,9 +223,11 @@ Capital `risk.capital_rub = 10_000` ₽; thresholds at their starting values (§
 1. **SBER** (`approved`), `NORMAL_TRADING`, full history, `data_status='ok'`, turnover 60B ₽, spread 4 bps,
    lot 10 × ~310 ₽ ≈ 3 100 ₽ → lot value 31% of 10 000 ₽ **> 30%** → fail eligibility check §3.1 #5 →
    `signals.decision='skipped'`, `signals.reason='lot_too_expensive'`. Stays `approved`.
-2. **X5** (`approved`), but the cycle's reference shows `trading_status` in an auction state → fail the
-   **step-1 session pre-check** (highest precedence) → `skipped`, `reason='not_trading'`, even though liquidity
-   is fine. (This is a pre-check, not a §3.1 eligibility filter — §3.1 note, §5.)
+2. **X5** (`approved`), but the instrument reference says the share is not generally tradable/available →
+   `skipped`, `reason='not_trading'`, even though liquidity is fine. If the only issue is that the venue is
+   currently outside `NORMAL_TRADING`, the daily selection cycle may still create a next-session proposal; the
+   live session gate is re-read at preflight and rejects the proposal if the next-session venue state is still
+   ineligible.
 3. **TATN** (`approved`), `NORMAL_TRADING`, but T-Invest vs MOEX ISS D1 close diverge > 0.5% →
    `data_status='data_conflict'` → fail the **step-1 data_conflict pre-check** → `skipped`,
    `reason='data_conflict'`. (Entry skipped; any open TATN position still exits normally — §5.)
@@ -243,7 +246,7 @@ Capital `risk.capital_rub = 10_000` ₽; thresholds at their starting values (§
 - **Per-cycle eligibility filters with the frozen starting values** (frozen-decisions.md, "Strategy, data &
   backtest honesty" (per-cycle eligibility row); TZ §7.3): max lot
   value 30%, max spread 0.50% (50 bps), min turnover 50M ₽, min trading days 40, trading-status + candles
-  required (trading-status is the step-1 pre-check, §5; candles + the economic-fit checks are §3.1).
+  required (live trading-status is re-read at preflight/submit; candles + the economic-fit checks are §3.1).
 - **skip ≠ remove from approved** (frozen-decisions.md, "Strategy, data & backtest honesty" (per-cycle
   eligibility row)): an eligibility failure marks `skipped` for the
   cycle only; `whitelist_status` is untouched (§1, §3, §6).
@@ -265,10 +268,6 @@ Capital `risk.capital_rub = 10_000` ₽; thresholds at their starting values (§
 
 ## 9. Open questions / owner-pending
 
-- **`universe.approved` / `universe.watch_only` final lists [owner-pending confirm]** — the later,
-  owner-grounded list is `approved` = SBER, T, GAZP, ROSN, TATN, X5; `watch_only` = IRAO, LKOH (supersedes
-  the earlier NVTK/GMKN proposal; frozen-decisions.md, "Known drift / owner decisions pending" (final universe
-  row)). **Not yet ratified — do not treat as final.**
 - **Eligibility thresholds are *starting* values [verify, empirical M2/M3]** — `max_lot_value_pct` (30),
   `max_spread_bps` (50), `min_turnover_rub` (50M), `min_trading_days` (40) are config defaults the
   cost-sensitivity / liquidity analysis may revise. The frozen LAW pins them as **starting** values, not

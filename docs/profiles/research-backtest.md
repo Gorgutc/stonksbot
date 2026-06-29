@@ -1,4 +1,4 @@
-# Profile: research-backtest  (status: dormant)
+# Profile: research-backtest  (status: active)
 
 Governs the **research & backtest** layer: data ingestion, instrument reference,
 the signal/strategy engine, and the honest backtest (walk-forward, cost model,
@@ -14,7 +14,8 @@ trading at all* — it must exist and pass before any live profile is activated.
   universe in the MVP.
 - Conservative backtest: signal only after the daily candle closes, entry no
   earlier than the next session (no intraday lookahead), limit fills only if the
-  day's low reaches the limit, costs applied both sides (0.30%/side commission +
+  next-session order TTL window reaches the limit; with D1-only data, fill only
+  if `D+1.open <= limit`, costs applied both sides (0.30%/side commission +
   0.10%/side slippage buffer), max entry premium 0.20% above reference (limit-price ceiling).
 - Validation: expectancy, max drawdown, Sharpe + Deflated Sharpe, hit rate,
   turnover, exposure, **walk-forward** (train → choose → test → shift), cost
@@ -26,17 +27,24 @@ trading at all* — it must exist and pass before any live profile is activated.
   **FAIL** if the result disappears after costs or is worse than equal-weight.
 
 ## Status rule
-- **dormant** — the rules above exist, but NO Python toolchain / dependency /
-  build command may be introduced until an explicit request flips status to
-  `active`. The `component-guardian` subagent enforces this.
+- **active as of 2026-06-29 owner decision** — M0 may introduce the Python
+  research/backtest toolchain, config/schema skeleton, tests, and read-only data
+  plumbing. This activation does **not** activate broker order placement,
+  Telegram execution, live/sandbox trading, or the `broker-adapter` /
+  `execution-confirm` profiles.
 
 ## Active toolchain (when active)
-Leave empty while dormant. Intended: Python 3.12+, pandas/numpy, pytest
-(+ hypothesis selectively). Set `verify.fast`/`verify.deep` in `.agent-kit.json`.
+Intended for M0/M1/M2: Python 3.12+, pandas/numpy, pytest (+ hypothesis
+selectively), ruff. Set `.agent-kit.json` `verify.fast`/`verify.deep`/`verify.ship`
+when the first M0 `pyproject.toml` and tests land; this readiness branch keeps
+those commands null because no package exists yet.
 
 ## Decision checklist (fill when activated)
-- [ ] data schema + snapshot versioning + stale-data mode recorded here
-- [ ] strategy contract (lookback, signal, invalidation, stop, sizing) recorded
+- [x] owner activated M0 / research-backtest start (2026-06-29)
+- [x] owner ratified `close_definition=auction_close` and `daily_run_time=19:05 Europe/Moscow`
+- [x] owner ratified universe: `approved=[SBER,T,GAZP,ROSN,TATN,X5]`, `watch_only=[IRAO,LKOH]`
+- [ ] data schema + snapshot versioning + stale-data mode implemented
+- [ ] strategy contract (lookback, signal, invalidation, stop, sizing) implemented
 - [ ] backtest honesty checks wired (no-lookahead, costs, fill rule) as tests
 - [ ] walk-forward + cost-sensitivity report produced (evidence gate target)
 

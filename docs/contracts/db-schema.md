@@ -236,6 +236,14 @@ CREATE TABLE control_state (
 );  -- persists pause/kill/blocked across restarts so kill/pause + the post-restart
     -- reconciliation gate survive a restart (TZ §7-§8); read on startup before any action.
 
+CREATE TABLE guard_state (
+  id                              INTEGER PRIMARY KEY CHECK (id = 1), -- singleton row
+  last_account_id                 TEXT,                                -- previous configured bot account_id for G4 change detection
+  account_id_change_confirmed_at  INTEGER,                             -- epoch-ms UTC; NULL until an account change is manually confirmed
+  account_id_change_confirmed_by  TEXT,                                -- actor/channel, e.g. owner:<telegram_user_id> or local-cli
+  updated_at                      INTEGER NOT NULL
+);  -- owner decision 2026-06-29: persist last-run account_id in DB, not a sidecar/config key.
+
 CREATE TABLE audit_journal (
   id          INTEGER PRIMARY KEY,                               -- append-only (see triggers)
   ts          INTEGER NOT NULL,
@@ -271,10 +279,10 @@ CREATE INDEX idx_cash_events_ts        ON cash_events(ts);
 ## 4. Invariants encoded by the schema
 - **No float money** — every monetary value is a `units`/`nano` integer pair.
 - **No-lookahead** — `candles.is_complete=1` only once the bar reflects the **final** close per
-  `config.close_definition`: for `auction_close`, the auction close from `GetClosePrices`/`OrderBook.close_price`
-  captured at/after 18:50 (19:00 from 2026-03-23); for `d1_candle_after_evening`, the GetCandles D1 close re-read
-  after ~23:50. The data layer asserts the close source matches `close_definition` before setting `is_complete=1`;
-  the signal `ts` is that final closed D1. (Until the "does evening print into the D1 close" check passes, prefer `auction_close`.)
+  `config.close_definition=auction_close` (owner-ratified 2026-06-29): the auction close from
+  `GetClosePrices`/`OrderBook.close_price`, captured at/after 18:50 (19:00 from 2026-03-23). The data layer
+  asserts the close source matches `close_definition` before setting `is_complete=1`; the signal `ts` is that
+  final closed D1. The `d1_candle_after_evening` enum value is retained only for a future owner-approved change.
 - **Idempotency** — `orders.order_id` is the client key and the PK (a retry/restart cannot create a duplicate).
 - **Managed registry** — `whitelist_status` CHECK exactly matches the frozen vocabulary; indices carry NULL.
 - **Limit-only** — `orders.type` CHECK admits only `LIMIT`; market/bestprice can't be persisted.
@@ -285,6 +293,8 @@ CREATE INDEX idx_cash_events_ts        ON cash_events(ts);
 - **Account guard (row-level)** — `orders.account_id` and `cash_events.account_id` (NOT NULL) and
   `audit_journal.account_id` carry the guarded account so the order/cash/audit trail is provably scoped; the
   engine asserts `== config.account_id` at submit **and** at reconciliation [LAW].
+- **Account guard (change detection)** — `guard_state` is the singleton DB home for the last-run `account_id`
+  and manual change-confirmation metadata; no sidecar file/config key.
 
 ## 5. Resolved by research `whq6u1gxe` + remaining empirical checks
 **Resolved (folded in above):**
@@ -293,8 +303,8 @@ CREATE INDEX idx_cash_events_ts        ON cash_events(ts);
   derived = `last_buy_date` + 1 trading day; the `to` request param filters on `record_date`.
 - Splits / corp-actions / renames = **MOEX ISS** (no T-Invest API): `/iss/statistics/engines/stock/splits`,
   `/iss/cci/corp-actions`, `…/securities/changeover` (TCSG→T confirmed 2024-11-27); stitch on **ISIN**.
-- D1 close = main-session **auction** close (recommended `close_definition=auction_close` via GetClosePrices)
-  — pins the `candles.ts`/close convention once the owner ratifies it.
+- D1 close = main-session **auction** close (`close_definition=auction_close` via GetClosePrices), owner-ratified
+  2026-06-29.
 
 **Remaining empirical (M1/M4 — do NOT block the M0 contract):**
 - Are T-Invest D1 **share** candles already split-adjusted? Verify on a known split before backtest use.

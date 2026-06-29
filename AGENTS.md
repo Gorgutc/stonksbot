@@ -183,14 +183,17 @@ npm run build
   tests it, then trades a tiny **dedicated** account in **confirm mode** (bot
   proposes an entry, the human confirms in Telegram; protective exits are
   automated). Codex/Claude BUILD, review, and document — **never** decide buy/sell.
-- **Status:** PREPARATION PHASE — **no bot code yet.** This repo holds the agent
-  harness, the TZ/contracts/ops planning layer, and a pointer to the Second Brain.
-  Implementation code starts only after an explicit request activates a component
-  profile. Until then every component is a **dormant profile** — introduce no
-  toolchain/build for a dormant component without an explicit request (see
-  `component-guardian` + `docs/profiles/`). The Second Brain vault is the cross-session
-  memory: read `1-Projects/stonksbot/_INDEX.md` → `Conventions.md` 🔒 → latest session
-  before substantial work (the repo's machine-local `CLAUDE.local.md` points there).
+- **Status:** PRE-M0 AUTHORIZED — **no bot code yet.** Owner decision on
+  2026-06-29 starts **M0 in the next session** and activates only the
+  `research-backtest` profile. This readiness branch keeps the repo at the
+  harness/TZ/contracts/ops layer; the M0 code branch may introduce the Python
+  research/backtest toolchain. `broker-adapter` and `execution-confirm` remain
+  **dormant** — introduce no broker order placement, Telegram execution,
+  live/sandbox trading dependency, or build command for those profiles without an
+  explicit activation request (see `component-guardian` + `docs/profiles/`). The
+  Second Brain vault is the cross-session memory: read
+  `1-Projects/stonksbot/_INDEX.md` → `Conventions.md` 🔒 → latest session before
+  substantial work (the repo's machine-local `CLAUDE.local.md` points there).
 - **Stack / runtime (intended, Python-first):** Python 3.12+; FastAPI (internal API +
   dashboard backend); SQLite for MVP → Postgres later; python-telegram-bot (control
   plane only); APScheduler or cron (daily jobs); Docker Compose (local → VPS); pytest
@@ -204,12 +207,13 @@ npm run build
   entry next session, no intraday lookahead**; conservative backtest fills + costs
   both sides; startup reconciliation; `kill` stops the bot + cancels orders but
   **never sells positions**.
-- **Verification:** no project-code verify command yet — `verify.*` are null so the post-edit hook
-  no-ops for dormant profiles. Harness/gate checks still exist (`check-kit`, `test-gates`,
-  `secret-scan`, `evidence-gate`). When a profile activates and code lands, set `.agent-kit.json`
-  `verify.fast`/`verify.deep` (Python: `ruff` + `pytest`) and mirror them here. Any
-  change to a strategy/backtest surface must carry walk-forward + cost-sensitivity
-  evidence (evidence gate).
+- **Verification:** no project-code verify command yet — this readiness branch
+  intentionally leaves `verify.*` null because no Python package/tests exist yet.
+  Harness/gate checks still exist (`check-kit`, `test-gates`, `secret-scan`,
+  `evidence-gate`). When the first M0 code lands, set `.agent-kit.json`
+  `verify.fast`/`verify.deep`/`verify.ship` (Python: `ruff` + `pytest`) and mirror
+  them here. Any change to a strategy/backtest surface must carry walk-forward +
+  cost-sensitivity evidence (evidence gate).
 - **Do-not-touch:** secrets/tokens (never in code/config/logs/dashboard/Telegram —
   env/secret store only); the frozen risk policy in `docs/frozen-decisions.md`; the
   Second Brain protocol. Record durable decisions in `docs/frozen-decisions.md` AND

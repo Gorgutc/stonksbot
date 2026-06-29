@@ -55,10 +55,12 @@ The strategy is a pure function; the risk engine (TZ §7) decides. Exactly one o
 
 **Hard gating before `selected` (TZ §7, all [LAW]):** account_id guard passes; `control_state.mode = running`
 (not `paused`/`killed`/`blocked_reconciliation_mismatch`); market-regime OK (IMOEX close ≥ MA50 **and** 5d
-return ≥ `risk.market_regime_5d_floor_pct`); session = `NORMAL_TRADING` (DEALER_NORMAL_TRADING and auction
-states excluded, TZ §9); `data_status != data_conflict`; `risk.max_open_positions` not exceeded;
-`risk.max_proposals_per_day` not exceeded; daily hard stop not hit; re-entry cooldown clear; dividend-gap
-window clear (tax §6). **Entry-only gates never block a protective exit.**
+return ≥ `risk.market_regime_5d_floor_pct`); `data_status != data_conflict`; `risk.max_open_positions` not
+exceeded; `risk.max_proposals_per_day` not exceeded; daily hard stop not hit; re-entry cooldown clear;
+dividend-gap window clear (tax §6). The post-close selection cycle does **not** require live
+`NORMAL_TRADING`, because it creates a next-session proposal rather than submitting an order; the
+`NORMAL_TRADING` / `DEALER_NORMAL_TRADING` / auction-state gate is mandatory in preflight (§4) immediately
+before any entry order submission. **Entry-only gates never block a protective exit.**
 
 ## 3. Proposal lifecycle (`proposals.state`) — wall-clock TTL (TZ §8)
 

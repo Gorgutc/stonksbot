@@ -50,15 +50,21 @@ is a contract violation.
 
 ### 2.1 Entry fill (limit buy, next session) [LAW]
 ```text
-entry_limit = round_tick_down( min( entry_ref × (1 + order.max_entry_premium_pct/100), entry_ref ),  # buy ceiling
-                               min_price_increment )   # entry_ref from strategy; premium ceiling never exceeded
-FILLED  on day D+1  IFF  candle(D+1).low  ≤  entry_limit          # the day's LOW must actually reach the limit
-fill_price = entry_limit                                          # a limit never fills better than its price in this model
+premium_ceiling = entry_ref × (1 + order.max_entry_premium_pct/100)
+entry_limit = round_tick_down( premium_ceiling, min_price_increment )  # buy limit; premium ceiling never exceeded
+FILLED  in the D+1 order TTL window  IFF  the observed trade low  ≤  entry_limit
+fill_price = entry_limit                                               # a limit never fills better than its price in this model
 UNFILLED  ⇒  NO TRADE   (one order attempt per signal; no price chasing; no carry to D+2) [LAW]
 ```
 - **One attempt, one session.** Mirrors execution TTL "single attempt/signal; unfilled → cancel" (TZ §8,
-  frozen-decisions.md, "Order & risk rules" (order TTL row)): if `D+1.low > entry_limit`, the signal is **dropped** — it is **not** retried on `D+2`
-  and the limit is **not** re-priced. `UNFILLED = no trade`, recorded as such (no `fills` row, no position).
+  frozen-decisions.md, "Order & risk rules" (order TTL row)): if the order is not filled inside the configured
+  `order.ttl_minutes` window on `D+1`, the signal is **dropped** — it is **not** retried on `D+2` and the limit is
+  **not** re-priced. `UNFILLED = no trade`, recorded as such (no `fills` row, no position).
+- **Required intraday evidence for TTL parity:** an M2 backtest may fill from the day's low only if it has
+  intraday/market-data evidence that the low occurred inside the first `order.ttl_minutes` after next-session
+  submission. If only D1 OHLC is available, the pessimistic fallback is:
+  `FILLED iff D+1.open <= entry_limit`, else `UNFILLED`. Whole-day `D+1.low` is forbidden as a D1-only fill
+  proxy because the live order expires after ~45 minutes.
 - **Gap-down entry conservatism:** if `D+1` gaps below the limit (`open < entry_limit`), still fill at
   `entry_limit` (the limit, not the better open) — this model **never** awards a price better than the posted
   limit. (Refusing the windfall keeps the model pessimistic, the honest direction.)
@@ -88,6 +94,11 @@ stop_fill_price = min( stop_level, candle.open )   # gap-down fills at the gap o
   reach the target; stops gap to the worse price) are **symmetric**. Filling a TP at the exact target on a day that
   merely closed near it, or a stop at the exact level through a gap, is the exit-side twin of entry lookahead and is
   **forbidden**.
+- **Same-bar ambiguity is resolved against the strategy [LAW].** If entry and an exit trigger are both possible
+  inside the same bar/window and the data cannot prove ordering, use the conservative ordering: no same-bar TP
+  credit; a same-bar hard stop/risk exit may fire; if stop and target both touch in an ambiguous bar, the stop or
+  otherwise worse executable price wins. With D1-only data, do not claim an entry+TP round trip from the same
+  candle.
 - **Protective exits always model, even on degraded data [LAW].** A `data_conflict`/stale bar blocks a new **entry**
   (§1.3, strategy §3.1) but **never** blocks modeling a protective **exit** on an open position (frozen-decisions.md,
   "Strategy, data & backtest honesty" (data truth row); backtest-honesty skill §8). The backtest must not strand a losing position because a feed wobbled.
@@ -254,8 +265,10 @@ it does not adopt sandbox economics.
 ## 9. Frozen invariants honored
 - **No intraday lookahead** — strictly-causal day loop; `decision_ts` = final D1 close; signal on `D` ⇒ order on
   `D+1`; same-day fill forbidden (§1.3, §2.1) [LAW; frozen-decisions.md, "Strategy, data & backtest honesty" (no-lookahead row), strategy §3.1].
-- **Conservative both-side fills** — entry fills only if `D+1.low ≤ limit`; TP only if `high ≥ target`; stop/MA-break
-  gap-fills at the worse price; unfilled = no trade; one attempt/signal; no asymmetric exit optimism (§2)
+- **Conservative both-side fills** — entry fills only inside the next-session TTL window; with D1-only data the
+  fallback is `D+1.open ≤ limit` else unfilled; TP only if `high ≥ target`; stop/MA-break gap-fills at the worse
+  price; ambiguous same-bar stop/TP ordering resolves to the worse outcome; unfilled = no trade; one
+  attempt/signal; no asymmetric exit optimism (§2)
   [LAW; frozen-decisions.md, "Strategy, data & backtest honesty" (conservative fills row), strategy §5 (entry rule, step 7)/§8].
 - **Costs both sides, both tariffs** — commission per `tariff` + 0.10%/side slippage + 390 ₽/mo (Трейдер) + 0.01 ₽
   min-commission floor, as config not constants (§3) [LAW; frozen-decisions.md, "Strategy, data & backtest honesty" (conservative fills row) + "Known drift / owner decisions pending" (commission tier vs edge), config §2.8, TZ §13].

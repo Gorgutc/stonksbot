@@ -9,8 +9,8 @@
 >
 > Two surfaces are deliberately split: **(A) trading-status / session-window eligibility** is fully
 > specifiable from frozen LAW and is specified here; **(B) the daily close definition + run time** is the
-> **no-lookahead LAW surface** the owner must ratify — it is presented as **placeholders only** (an authored
-> `daily_run_time` ≥ 18:50 would be a *de-facto silent frozen-change* and is forbidden here).
+> **no-lookahead LAW surface** ratified by the owner on 2026-06-29:
+> `close_definition=auction_close`, `daily_run_time=19:05 Europe/Moscow`.
 > Pairs with [config-and-secrets.md](config-and-secrets.md), [db-schema.md](db-schema.md),
 > [tax-and-dividends.md](tax-and-dividends.md). Skills: `risk-policy-guardian`,
 > `state-machine-discipline`, `broker-api-contract`.
@@ -86,8 +86,9 @@ ENTRY ELIGIBILITY  (config.risk.allowed_trading_status = "NORMAL_TRADING") [LAW]
   **never** reused at submit time.
 - **Confirm-path re-check:** on a Telegram confirm, the **preflight re-runs the session gate** (TZ §8:
   "re-run preflight … tradable, price/spread/lot, limits, account_id, no conflicting orders, mode"). A proposal
-  confirmed after the venue left `NORMAL_TRADING` is **rejected at preflight** (`signals.decision='skipped'`,
-  `reason='not_trading'`), not sent.
+  confirmed after the venue left `NORMAL_TRADING` is **rejected at preflight**:
+  `proposals.state='rejected'`, `audit_journal: preflight_failed`, `reason='not_trading'`; no order is sent.
+  The already-selected signal is not rewritten to `skipped`.
 - **Stale data:** if the trading-status read is unavailable/stale, treat as `entry_eligible = FALSE`
   (`reason='not_trading'`); a protective exit may still be attempted if the venue accepts it.
 
@@ -112,18 +113,20 @@ sessions" LAW visible, but the live status read is what enforces it.
 
 ## 4. Daily workflow & APScheduler job layout (TZ §19, §17; frozen-decisions.md, "Order & risk rules" (session-gate / market-regime / re-entry rows) + "Strategy, data & backtest honesty" (no-lookahead row))
 
-The daily cycle runs **once per trading day, after the final D1 close** (see §6 for *when* — owner-pending),
+The daily cycle runs **once per trading day, after the final D1 close** (see §6: `auction_close` at 19:05 MSK),
 and produces **at most one** proposal (`risk.max_proposals_per_day = 1` [LAW]). Ordering is fixed so that no
 step can act on data the model could not yet know (no-lookahead).
 
 ### 4.1 Daily pipeline (ordered steps)
 
 ```text
-DAILY CYCLE  (fires at config.daily_run_time — owner-pending, see §6)  [LAW: ≤1 proposal/day]
+DAILY CYCLE  (fires at config.daily_run_time=19:05 Europe/Moscow, see §6)  [LAW: ≤1 proposal/day]
  0. control_state gate     : read control_state.mode (singleton row, db-schema §3.3).
                              paused | killed | blocked_reconciliation_mismatch -> NO new entries
                              (monitoring + protective exits continue; resume needs extra confirm — TZ §7.8).
- 1. account_id guard       : assert config.account_id present & exact-match (config §3) [LAW] — else refuse.
+ 1. account_id guard       : in paper/research, no broker account is required; for sandbox/confirm, require
+                             explicit config.account_id and fail closed until the M4 GetAccounts exact-match
+                             stages exist (config §3; account-guard-split §3) [LAW].
  2. reconciliation         : reconciliations.kind='startup'|'post_restart' on (re)start;
                              'periodic' on the daily fire. Mismatch -> control_state.mode=
                              'blocked_reconciliation_mismatch' (TZ §8): block entries, monitor on,
@@ -135,7 +138,9 @@ DAILY CYCLE  (fires at config.daily_run_time — owner-pending, see §6)  [LAW: 
  4. market-regime filter   : IMOEX close < MA(risk.market_regime_index_ma=50)  OR
                              IMOEX 5d return < risk.market_regime_5d_floor_pct (-5%) => NO new entries today;
                              exits ALWAYS allowed [LAW, frozen-decisions.md, "Order & risk rules" (market-regime row)].
- 5. eligibility + session  : per approved ticker run §2 session gate + eligibility filters (config §2.4);
+ 5. eligibility filters    : per approved ticker run data/liquidity/spread/lot/dividend/cooldown filters
+                             (config §2.4 + tax §6). Do NOT run the live `NORMAL_TRADING` submit gate here:
+                             this cycle is post-close and creates a next-session proposal, not an order.
                              failing approved ticker => signals.decision='skipped' (reason code) — skip != remove.
  6. strategy (pure fn)     : compute signals on the FINAL closed D1 only; entry no earlier than next session
                              [LAW: no intraday lookahead]. dividend-gap block (tax §6) applies to entries only.
@@ -157,7 +162,7 @@ DAILY CYCLE  (fires at config.daily_run_time — owner-pending, see §6)  [LAW: 
 
 | Job id | Trigger | Cadence | Purpose | Skips when |
 | --- | --- | --- | --- | --- |
-| `daily_cycle` | cron @ `daily_run_time` [owner-pending §6] | every MOEX **trading** day | §4.1 pipeline; ≤1 proposal | non-trading day (§5); host asleep (run on wake, §4.3) |
+| `daily_cycle` | cron @ `daily_run_time=19:05 Europe/Moscow` (§6) | every MOEX **trading** day | §4.1 pipeline; ≤1 proposal | non-trading day (§5); host asleep (run on wake, §4.3) |
 | `monthly_whitelist_review` | cron (monthly, owner-pending day/time) | monthly | re-evaluate `approved`+`watch_only` on liquidity/lot/spread/availability; emit **replacement proposals to Telegram for owner confirm**; may set `universe.pending` — **never** auto-`approved` (TZ §12) | — |
 | `exit_monitor` | interval (continuous; cadence owner-pending) | intraday during venue-open | evaluate protective exits per-attempt session gate (§2); runs in `paused` (ALL protective exits continue) AND `blocked_reconciliation_mismatch` (RISK exits only; PROFIT/`target_trailing` FORBIDDEN; `trend`/`time` [owner-pending], not auto-fired — §4.1 step 2) | venue closed |
 | `proposal_ttl_sweep` | interval | minutes | expire proposals past `button_ttl_minutes` (`proposals.state='expired'`); a proposal created before a restart is re-evaluated & expired on resume (TZ §8) | — |
@@ -199,36 +204,28 @@ produces no signals, no proposal, no entry (and no misfire — §4.3).
 - **Trading-day arithmetic** elsewhere (e.g. dividend ex-date = `last_buy_date + 1 trading day`, tax §6) uses
   the **same** MOEX trading calendar — one calendar source, no divergence.
 
-## 6. Close definition & daily run time — OWNER-PENDING (no-lookahead LAW surface)
+## 6. Close definition & daily run time — RATIFIED (no-lookahead LAW surface)
 
-> **Do not assert a canonical close here.** `close_definition` + `daily_run_time` together form the
-> **no-lookahead LAW surface** (frozen-decisions: "signal only after the daily candle closes … no intraday
-> lookahead"; config-and-secrets §6a / §3.1; db-schema §4). The owner must **ratify** the close definition.
-> Both options are presented as placeholders; an authored value ≥ 18:50 would be a silent frozen-change and is
-> forbidden in this contract. The startup loader (config §3.1) **hard-fails** on a leaky combination.
-
-### 6.1 The two coupled knobs (placeholders)
+Owner decision on 2026-06-29 locks the M0 start values:
 
 ```text
-close_definition : enum { auction_close , d1_candle_after_evening }   # [owner-ratify] — pick ONE
-daily_run_time   : "HH:MM" (Europe/Moscow)                            # [owner-pending] — bound to the choice
+close_definition = auction_close
+daily_run_time   = "19:05"  # Europe/Moscow
 ```
 
-| `close_definition` (option) | Final-close source | Lookahead-safe at | Required `daily_run_time` constraint (enforced by config §3.1 loader) |
+| `close_definition` | Final-close source | Lookahead-safe at | Required loader constraint |
 | --- | --- | --- | --- |
-| `auction_close` *(research-recommended, not asserted)* | main-session **auction** close via `GetClosePrices` / `OrderBook.close_price` — **not** the GetCandles D1 close | 18:50 MSK; **19:00** on/after `moex_auction_shift_date` (2026-03-23) | `daily_run_time` ≥ 18:50 (≥ 19:00 on/after the shift date) **[owner-pending — do not author the value]** |
-| `d1_candle_after_evening` | GetCandles **D1 close** re-read after the evening session (~23:50) | after evening close (~23:55) **and** `candles.is_complete=1` (db-schema §4) | `daily_run_time` after ~23:55 **and** the D1 bar confirmed `is_complete` **[owner-pending — do not author the value]** |
+| `auction_close` | main-session **auction** close via `GetClosePrices` / `OrderBook.close_price` — **not** the GetCandles D1 close | 18:50 MSK before `moex_auction_shift_date`; **19:00** on/after `2026-03-23` | `daily_run_time` must be after the applicable auction close; `19:05` satisfies the shifted schedule |
 
-- **Why owner-pending, not authored:** research `whq6u1gxe` *recommends* `auction_close`, but whether the
-  evening session prints into the T-Invest GetCandles D1 `close` is an **empirical M1/M4 check** (db-schema §5).
-  Asserting a concrete `daily_run_time` here would lock the no-lookahead LAW surface before the owner ratifies
-  it — a silent frozen-change. The contract therefore fixes the **coupling rule**, not the value.
-- **`is_complete` gate [LAW: no-lookahead]:** the daily pipeline (§4.1 step 6) may compute signals only on a D1
-  bar whose `candles.is_complete=1`, which is set **only** when the close source matches the ratified
-  `close_definition` (db-schema §4). This binds the scheduler to the data layer's no-lookahead gate.
+- **Evening D1 candle is not the decision source.** The evening session (~19:00–23:50) may be studied in M1/M4
+  to understand provider behavior, but it does not delay the daily decision cycle while
+  `close_definition=auction_close`.
+- **`is_complete` gate [LAW: no-lookahead]:** the daily pipeline (§4.1 step 6) may compute signals only on a
+  close source marked complete according to the ratified `close_definition` (db-schema §4). For
+  `auction_close`, completion means the auction close was fetched/recorded, not that the after-evening D1
+  candle was re-read.
 - **Startup binding (config §3.1, restated — not redefined):** the loader **refuses to start** (exit non-zero)
-  if `daily_run_time` is unset, **or** earlier than the final close implied by `close_definition`. This
-  contract relies on that gate; it does not author the threshold value.
+  if `daily_run_time` is unset, **or** earlier than the final close implied by `close_definition`.
 
 ### 6.2 Auction-shift handling (`moex_auction_shift_date = 2026-03-23`)
 
@@ -254,15 +251,9 @@ daily_run_time   : "HH:MM" (Europe/Moscow)                            # [owner-p
 
 ## 8. Open questions / owner-pending
 
-- **`close_definition` (owner-ratify) [LAW surface].** `auction_close` vs `d1_candle_after_evening` — research
-  *recommends* `auction_close`; the **owner must ratify** the no-lookahead close definition (config §6a).
-  Presented as placeholders only — **no canonical close asserted** in this contract.
-- **`daily_run_time` (owner-pending) [LAW surface].** Bound to `close_definition` per §6.1; the value is
-  **not authored here** (an authored value ≥ 18:50 would be a silent frozen-change). The config §3.1 loader
-  hard-fails a leaky combination; this contract only fixes the coupling rule.
 - **Evening-session effect on the D1 close [verify].** Whether the evening session prints into the T-Invest
-  GetCandles D1 `close` is an empirical M1/M4 check (db-schema §5); it decides whether `auction_close` vs
-  `d1_candle_after_evening` is even necessary.
+  GetCandles D1 `close` is an empirical M1/M4 check (db-schema §5). It is informational while the ratified
+  decision source is `auction_close`; changing that source later requires owner decision + ADR.
 - **MOEX trading-calendar source [verify].** Exact MOEX ISS calendar endpoint + anonymous availability for
   holiday / short-session detection (§5); until wired, the live status gate (§2) is the fail-safe.
 - **APScheduler misfire/grace window [verify].** `misfire_grace_time` + `coalesce` tuning for host-sleep /
