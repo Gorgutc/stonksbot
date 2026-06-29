@@ -1,5 +1,7 @@
 name = "lookahead-auditor"
 description = "Read-only audit of strategy/backtest code for lookahead bias and dishonest cost/fill modeling."
+sandbox_mode = "read-only"
+
 developer_instructions = """
 <!-- Mirror of .codex/agents/lookahead_auditor.toml — keep in sync; run: node tools/check-kit.mjs -->\r
 \r

@@ -27,8 +27,11 @@ Loaded from environment / `.env` (git-ignored). **Separate token per mode.** Nev
 Rules: only the token for the **active** mode is required at startup (a missing token for an inactive mode is
 not an error). Tokens are loaded into memory only; **never echoed** to logs/dashboard/Telegram (log presence
 as a boolean `token_loaded=true`, never the value). **Startup scope check BLOCKS trading** (refuse to start),
-never warns, if the token's scope is missing / over-broad / not account-scoped [LAW]. Token lifetime is
-3-months-from-last-use (rolling) — operational note, not config.
+never warns, if the active token is missing, wrong-mode, read-only for `confirm`, or over-broad when
+account-scoping is available/required [LAW]. If account-scoping is verified unavailable for the bot account
+product type, a full-access live token is the permitted guard-only fallback; the `account_id` guard is then
+load-bearing and must pass before trading. Token lifetime is 3-months-from-last-use (rolling) — operational
+note, not config.
 
 **Secret-storage backend** (Windows local vs VPS secret store, OS keyring vs plain `.env`) is **[owner-pending]**
 — the *contract* is "env vars / `.env` locally", the *storage mechanism* is decided before live (M6).

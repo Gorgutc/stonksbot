@@ -1,5 +1,7 @@
 name = "verification-reviewer"
 description = "Runs the project's verify command and reports a clear PASS/FAIL with the failing output; does not edit files."
+sandbox_mode = "read-only"
+
 developer_instructions = """
 <!-- Mirror of .codex/agents/verification_reviewer.toml — keep in sync; run: node tools/check-kit.mjs -->\r
 \r

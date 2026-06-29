@@ -1,6 +1,6 @@
 ---
 name: fanout-orchestrator
-description: Use when a task is broad, parallelizable, or multi-file and would benefit from many Codex agents at once — audits, dead-code/duplication sweeps, multi-file reviews, codebase-wide research, or any "do this across everything" request. Explains how to orchestrate parallel codex exec runs from Claude Code.
+description: Use when a task is broad, parallelizable, or multi-file and would benefit from many Codex agents at once — audits, dead-code/duplication sweeps, multi-file reviews, codebase-wide research, or any "do this across everything" request. Explains how to orchestrate parallel codex exec runs from any agent harness.
 ---
 
 # Fan-out orchestrator
@@ -8,7 +8,7 @@ description: Use when a task is broad, parallelizable, or multi-file and would b
 Act as the **orchestrator**: decompose the task, dispatch independent units to
 many parallel `codex exec` agents (running on the user's Codex/ChatGPT plan via
 `tools/codex-orchestrator/fanout.mjs`), then synthesize and verify the results.
-Orchestration is on the Claude/Anthropic side; execution is on the Codex plan —
+Orchestration is on the current agent-harness side; execution is on the Codex plan —
 two quota pools at once.
 
 ## When to use this

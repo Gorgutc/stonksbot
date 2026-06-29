@@ -6,7 +6,7 @@
 // secret-scan always runs (token leak protection, even before verify.* is set);
 // every other step is optional/no-op when not configured. Exits non-zero on failure.
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -37,6 +37,19 @@ function run(cmd) {
 function node(script, args = "") {
   run(`node ${JSON.stringify(path.join(ROOT, script))}${args ? " " + args : ""}`);
 }
+function gitOk(ref) {
+  try {
+    execFileSync("git", ["rev-parse", "--verify", "--quiet", ref], { cwd: ROOT, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function evidenceBaseArgs() {
+  if (gitOk("origin/main")) return " --base origin/main";
+  if (gitOk("main")) return " --base main";
+  return "";
+}
 
 try {
   if (stage === "pre-commit") {
@@ -48,7 +61,7 @@ try {
     const cmd = v.ship || v.deep || v.fast || cfg.verifyCommand;
     if (cmd) run(cmd);
     node("tools/check-kit.mjs");
-    node("tools/evidence-gate.mjs");
+    node("tools/evidence-gate.mjs", evidenceBaseArgs());
   } else {
     process.stderr.write(`[git-gate] unknown stage: ${stage}\n`);
     process.exit(2);

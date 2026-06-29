@@ -82,6 +82,13 @@ if (!exists(".agent-kit.json")) {
 // --- subagents: toml <-> md mirror parity ---
 const tomls = listFiles(".codex/agents", ".toml");
 const mdSeen = new Set();
+const claudeReadOnlyBashAllowed = new Set([
+  "code-reviewer",
+  "instruction-drift-auditor",
+  "lookahead-auditor",
+  "risk-invariant-auditor",
+  "verification-reviewer",
+]);
 for (const file of tomls) {
   const text = read(path.join(".codex/agents", file));
   const name = tomlValue(text, "name");
@@ -107,6 +114,8 @@ for (const file of tomls) {
     fail(`${mdRel}: read-only mirror should declare a tools: line`);
   } else if (/\b(Edit|Write|MultiEdit)\b/.test(fm.tools)) {
     fail(`${mdRel}: read-only mirror must not grant ${fm.tools.match(/\b(Edit|Write|MultiEdit)\b/)[0]}`);
+  } else if (/\bBash\b/.test(fm.tools) && !claudeReadOnlyBashAllowed.has(kebab)) {
+    fail(`${mdRel}: read-only mirror grants Bash without an allowlist entry`);
   } else {
     ok(`agent ${name} <-> ${kebab}.md (read-only, mirrored)`);
   }

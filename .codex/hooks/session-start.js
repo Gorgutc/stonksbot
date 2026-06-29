@@ -37,7 +37,8 @@ try {
 const context = [
   `Project: ${name}. Primary instructions: AGENTS.md (single source of truth for Codex + Claude Code + Gemini).${verifyHint}${profileHint}`,
   "Before substantial work use the session-bootstrap skill. Fan-out orchestrator at tools/codex-orchestrator/fanout.mjs: decompose broad/parallel work into a spec.json and run many Codex agents at once (read-only by default; `--doctor` checks prerequisites).",
-  "Read-only subagents in .codex/agents/*.toml (.claude/agents/*.md mirrors): explorer, code_reviewer, dead_code_auditor, researcher, instruction_drift_auditor, verification_reviewer, component_guardian. Skills in .claude/skills: fanout-orchestrator, session-bootstrap, context-keeper, frozen-decisions, instruction-drift.",
+  "Read-only subagents in .codex/agents/*.toml (.claude/agents/*.md mirrors): explorer, code_reviewer/code-reviewer, dead_code_auditor/dead-code-auditor, researcher, instruction_drift_auditor/instruction-drift-auditor, verification_reviewer/verification-reviewer, component_guardian/component-guardian, risk_invariant_auditor/risk-invariant-auditor, lookahead_auditor/lookahead-auditor.",
+  "Skills in .claude/skills: session-bootstrap, fanout-orchestrator, context-keeper, frozen-decisions, instruction-drift, risk-policy-guardian, backtest-honesty, broker-api-contract, secrets-token-policy, state-machine-discipline.",
   "Run `node tools/check-kit.mjs` to self-check the harness."
 ].join(" ");
 

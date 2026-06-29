@@ -174,7 +174,7 @@ Enforces every frozen invariant. In order:
    never take profit at +6% and immediately re-buy the same ticker because price kept rising.)*
 7. **Exits (auto):** hard stop ~4%; trend-break (close < MA50); `target_then_trailing` (TP **6%** pinned,
    trail 3%, support close < MA20); time exit (`max_holding_days`; **8-week max without review**).
-8. **Controls:** `pause` (block entries, keep monitoring+exits); `resume` (extra confirm + preflight);
+8. **Controls:** `pause` (block entries, cancel still-live entry BUY orders, keep monitoring+exits); `resume` (extra confirm + preflight);
    `kill` (stop bot + cancel active orders only — **never sells**).
 
 ## 8. Order/position state machine & execution
@@ -199,10 +199,11 @@ States per §5.1 enums. Signal `selected` → proposal `awaiting_confirmation` �
 - **Order safety at the API boundary:** the adapter normalizer emits only `ORDER_TYPE_LIMIT`, never sets
   `confirmMarginTrade=true`, and rejects SELL > held qty — enforcing §7.2 even if upstream logic slips.
 - **Tokens:** read-only / full-access / **account-scoped** / sandbox. Per-mode tokens; **startup scope check
-  must BLOCK trading (refuse to start), not warn**, if scope is missing/over-broad/not account-scoped. Token
-  **lifetime = 3 months from last use (rolling, resets each call)** — keep tokens warm or rotate. Account-scoped
-  tokens are **not** available for Инвесткопилка / Счёт под ключ / Смарт-счёт — confirm the bot account's
-  product type supports scoping; else rely on the account_id guard. [verified]
+  must BLOCK trading (refuse to start), not warn**, if the active token is missing, wrong-mode, read-only for
+  `confirm`, or over-broad when account-scoping is available/required. Token **lifetime = 3 months from last use
+  (rolling, resets each call)** — keep tokens warm or rotate. Account-scoped tokens are **not** available for
+  Инвесткопилка / Счёт под ключ / Смарт-счёт — confirm the bot account's product type supports scoping; if it
+  does not, owner-recorded guard-only full-access fallback relies on the `account_id` guard. [verified]
 - **Pre-order:** check tradability, trading status (`NORMAL_TRADING` only; **DEALER_NORMAL_TRADING(=14) and
   auction states excluded**), last price, `min_price_increment`, lot; `GetOrderPrice` for pre-trade cost
   (limit orders — market-order support unconfirmed, moot since limit-only). [verified]

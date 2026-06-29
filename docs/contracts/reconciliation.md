@@ -74,20 +74,24 @@ Run in this exact order on every `startup` / `post_restart`. Each step is a test
 2. **Re-evaluate every `awaiting_confirmation` proposal** against **wall-clock** TTL
    (`created_at + ttl_ms` vs **now**, `ttl_ms` from `config.button_ttl_minutes`): elapsed → `expired`
    ([state-machine.md](state-machine.md) §3) [LAW]. No stale confirm button can fire after a restart.
-3. **Read broker truth** for `account_id == config.account_id` only: open positions, active orders, cash balance.
+3. **Resolve every `confirmed` proposal before new action** ([state-machine.md](state-machine.md) §10): if a
+   local/broker order exists for its deterministic `order_id`, adopt broker truth; if no such order exists,
+   reject/expire it with `reason=restart_before_submit`, alert the owner, and require a fresh signal/proposal/
+   confirm. Startup must never submit a newly-created entry order from an old confirm [LAW].
+4. **Read broker truth** for `account_id == config.account_id` only: open positions, active orders, cash balance.
    Account mismatch → hard abort (§1), never adopt.
-4. **Diff** broker truth vs local `positions` / `orders` / cash and classify each finding (§4).
-5. **Retry on transient failure / unstable read:** retry up to **3 attempts** with backoff **60s / 180s / 300s**
+5. **Diff** broker truth vs local `positions` / `orders` / cash and classify each finding (§4).
+6. **Retry on transient failure / unstable read:** retry up to **3 attempts** with backoff **60s / 180s / 300s**
    [LAW]. A clean diff (`reconciliations.result = clean`) requires **2 consecutive clean checks** before normal
    trading is allowed — a single clean read does not clear the gate [LAW].
-6. **Resolve to a result:**
+7. **Resolve to a result:**
    - 2 consecutive `clean` → write `reconciliations.result = clean`; trading allowed (mode stays/returns to its
      pre-existing non-blocked value).
    - any persistent diff after retries → write `reconciliations.result = mismatch`; apply §5 → `control_state.mode =
      blocked_reconciliation_mismatch`.
    - a diff that **cannot be safely resolved** (e.g. ambiguous broker state, account anomaly, irreconcilable qty) →
      write `reconciliations.result = blocked`; remain not-trading; alert the owner; require manual resolution.
-7. **Journal:** write an `audit_journal` row `event=reconciliation` (actor `system`) for each cycle; record the
+8. **Journal:** write an `audit_journal` row `event=reconciliation` (actor `system`) for each cycle; record the
    `mismatch` JSON detail on the `reconciliations` row ([db-schema.md](db-schema.md) §3.3).
 
 **Retry/clean-check enum (frozen here, mirrored from TZ §8):**

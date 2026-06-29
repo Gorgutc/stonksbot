@@ -173,7 +173,7 @@ Windows is open.
 | --- | --- | --- |
 | S1 | Secrets are **env-only**, loaded from environment / `.env` (git-ignored) per [config-and-secrets.md](../contracts/config-and-secrets.md) §1; **never** in code, committed config, logs, dashboard, or Telegram [LAW]. | §16 |
 | S2 | **Separate token per mode** (`TINVEST_TOKEN_SANDBOX`, `TINVEST_TOKEN_LIVE_CONFIRM`; `TELEGRAM_BOT_TOKEN`, `DASHBOARD_AUTH_TOKEN`); only the active mode's token is required at startup. On this host the active mode is `paper`/`sandbox` — the live-confirm token need not be present locally. `TINVEST_TOKEN_LIVE_AUTO_SMALL` stays absent (auto_small DISABLED) [LAW]. | §16 |
-| S3 | **Startup scope check BLOCKS trading** (refuse to start), never warns, if the token's scope is missing / over-broad / not account-scoped [LAW]. | §16 |
+| S3 | **Startup scope check BLOCKS trading** (refuse to start), never warns, if the active token is missing, wrong-mode, read-only for `confirm`, or over-broad when account-scoping is available/required. If account-scoping is verified unavailable and owner-recorded, the guard-only full-access fallback relies on the `account_id` guard [LAW]. | §16 |
 | S4 | Backups (§6) and logs (§7) must contain **no token** — tokens are never persisted to the DB or logs, so a snapshot/rotation can never carry one [LAW]. | §16 |
 | S5 | Token lifetime is **3-months-from-last-use (rolling)**; a long idle paper window can let a token lapse — keep tokens warm or plan rotation (operational note, not config). Rotation/revoke is owner-driven; the broker does not store tokens for you. | §16 |
 

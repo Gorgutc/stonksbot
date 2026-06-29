@@ -106,7 +106,8 @@ FROZEN T-INVEST ORDER CONSTANTS (referenced — emit only the first; reject the 
 ### 4.1 Startup scope check — BLOCK, never warn [LAW]
 
 On startup, in `mode ∈ {sandbox, confirm}`, the adapter must run a scope check and **refuse to start**
-(exit non-zero) if the token scope is missing / over-broad / unexpected for the mode:
+(exit non-zero) if the token scope is missing, wrong-mode, read-only for `confirm`, or over-broad when
+account-scoping is available/required:
 
 ```text
 STARTUP SCOPE CHECK (mode in {sandbox, confirm}):
@@ -114,18 +115,19 @@ STARTUP SCOPE CHECK (mode in {sandbox, confirm}):
   - confirm token must grant trade on the dedicated account; a read-only token in confirm mode -> BLOCK
   - wrong-mode token (sandbox token in live path, or vice-versa) -> BLOCK
   - over-broad token -> BLOCK *only when account-scoping IS available* for the bot account's
-    product type (least privilege: prefer an account-scoped token). When account-scoping is NOT
-    available (guard-only fallback, §4.2, decision 3), a full-access token is PERMITTED — it is the
-    unavoidable residual — and the §5 account guard is the load-bearing control; the check then
-    BLOCKS only on read-only / wrong-mode / sandbox-vs-live mismatch, NOT on over-broad.
+    product type (least privilege: prefer an account-scoped token). When account-scoping is verified
+    unavailable and the owner records the guard-only posture (§4.2, decision 3), a full-access token
+    is PERMITTED — it is the unavoidable residual — and the §5 account guard is the load-bearing
+    control; the check then BLOCKS only on missing / read-only / wrong-mode / sandbox-vs-live mismatch,
+    NOT on over-broad.
   Result of a failed check: refuse to start (exit non-zero) + audit_journal event 'startup_scope_block'.
   NEVER a warn-and-continue.
 ```
 
-This is **one consistent rule** with §4.2: full-access is allowed **iff** account-scoping is
-unavailable for the bot account's product type. When scoping is available, prefer (and require) an
-account-scoped token and BLOCK on over-broad; when scoping is unavailable, full-access is the permitted
-fallback and the §5 account guard carries the confinement.
+This is **one consistent rule** with §4.2: full-access is allowed **iff** account-scoping is verified
+unavailable for the bot account's product type and the owner records the guard-only posture. When scoping is
+available, prefer (and require) an account-scoped token and BLOCK on over-broad; when scoping is unavailable,
+full-access is the permitted fallback and the §5 account guard carries the confinement.
 
 ### 4.2 Account-scoped token vs account-guard-only — the fallback [owner-pending, decision 3]
 
@@ -142,8 +144,8 @@ they are not available for every product type**: T-Invest does **not** offer acc
 - **If account scoping is NOT available** (product type unsupported) → **fall back to the `account_id` guard
   only** (§5): the token may be full-access, and the **only** thing that confines blast radius is the runtime
   account guard. In this fallback the scope check (§4.1) cannot assert account-scoping; it still BLOCKS on the
-  read-only/wrong-mode conditions (over-broad is **permitted** here — full-access is the unavoidable residual),
-  and the account guard (§5) becomes the **load-bearing** control.
+  missing/read-only/wrong-mode conditions (over-broad is **permitted** here — full-access is the unavoidable
+  residual), and the account guard (§5) becomes the **load-bearing** control.
 
 The owner must record which case applies (and thus whether scope-check-for-account or guard-only is the live
 posture) **before** the live confirm gate. Neither branch is asserted as the settled value here.
@@ -304,7 +306,7 @@ round_to_tick(price, min_price_increment, side, is_protective_exit):
 | **No shorts / long-only** | SELL rejected when `lots > held` on `config.account_id` (§3, §5) |
 | **Dedicated account + account guard** | Refuse-to-start guard + per-call exact-match assertion at submit & reconcile (§5) |
 | **Per-mode tokens, env only, never logged** | §4 token policy; presence logged as boolean, value never echoed |
-| **Startup scope check BLOCKS** | §4.1 refuse-to-start on missing/over-broad/wrong-mode scope |
+| **Startup scope check BLOCKS** | §4.1 refuse-to-start on missing/wrong-mode/read-only-for-confirm, and on over-broad unless verified guard-only fallback applies |
 | **`instrument_uid`, not FIGI** | §2 — uid is the only instrument key the adapter passes/stores |
 | **Pre-order `NORMAL_TRADING` only; exclude dealer + auction** | §6, §6.1 — entries gated; `DEALER_NORMAL_TRADING(14)` + auctions excluded |
 | **Tick rounding / lot checks** | §6.1, §6.2 — exact-Quotation tick rounding (DOWN for buy AND protective-exit SELL), lot integer check |
@@ -321,8 +323,9 @@ round_to_tick(price, min_price_increment, side, is_protective_exit):
 - **`kill`** → adapter **cancels active orders only** (idempotent `CancelOrder` per open `order_id`) and stops
   the bot; it issues **no SELL** and never liquidates a position. A kill switch must never itself dump the
   portfolio. [LAW]
-- **`pause`** → block new entries; keep monitoring + protective exits active. **`resume`** → extra confirm +
-  preflight (re-run the §6 pre-order checks and reconciliation before resuming). [LAW]
+- **`pause`** → block new entries, cancel/cancel-request still-live entry BUY orders, and keep monitoring +
+  protective exits active. **`resume`** → extra confirm + preflight (re-run the §6 pre-order checks and
+  reconciliation before resuming). [LAW]
 - These verbs are control-plane (Telegram §10); the adapter just executes the resulting cancel/no-op — it does
   not decide them.
 

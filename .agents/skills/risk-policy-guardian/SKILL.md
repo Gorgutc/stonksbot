@@ -26,7 +26,7 @@ Hard rules (never silently relax):
 6. **Universe:** the bot may not add tickers to the trading universe itself; status
    is `approved` / `managed_only` / `watch_only` / `blocked` / `pending`.
 7. **Design axis = expected profit per trade after costs**, not trade frequency.
-8. **No model in the decision path.** No LLM / Codex / Codex / ML call may decide
+8. **No model in the decision path.** No LLM / Codex / Claude / ML call may decide
    buy/sell/quantity or gate an entry — trading actions come only from deterministic
    strategy + risk rules. LLMs build, review, and document; they never trade.
 

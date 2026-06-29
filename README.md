@@ -7,9 +7,10 @@ tiny **dedicated** account in **confirm mode** — the bot proposes an entry, th
 confirms in Telegram, and protective exits are automated. Codex/Claude build, review,
 and document the system; they never decide buy/sell.
 
-> **Status: preparation phase — no bot code yet.** This repo currently holds the
-> agent harness (Codex + Claude Code + Gemini) and a link to the cross-session memory
-> (the Second Brain vault). Implementation starts from a future TZ (spec).
+> **Status: preparation phase — no bot code yet.** This repo holds the agent
+> harness (Codex + Claude Code + Gemini), the TZ/contracts/ops planning layer, and
+> a link to the cross-session memory (the Second Brain vault). Implementation code
+> starts when a dormant profile is explicitly activated.
 
 ## Read first
 - `AGENTS.md` — single source of truth for every agent harness (see PROJECT SPECIFICS).
@@ -28,6 +29,7 @@ and document the system; they never decide buy/sell.
 - All components are **dormant profiles** (`docs/profiles/`) — no toolchain/build is
   introduced until the TZ flips one to `active` (`component-guardian` enforces).
 - Self-check: `node tools/check-kit.mjs`.
+- Gate regression tests: `node tools/test-gates.mjs`.
 
 ## Safety (non-negotiable — see `docs/frozen-decisions.md`)
 Dedicated account + `account_id` guard · confirm-mode first · limit orders only ·

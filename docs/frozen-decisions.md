@@ -68,7 +68,7 @@ explicit owner decision; record it as an ADR in the Second Brain `Decisions/` to
 
 ## Known drift / owner decisions pending
 - No bot code exists yet (preparation phase). These contracts are written **ahead**
-  of the implementation so the future TZ + Codex/Claude build against them. Until a
+  of the implementation so the current TZ + Codex/Claude build against them. Until a
   component profile in `.agent-kit.json` is `active`, "Enforced by … tests/code" is
   aspirational and the skill/agent + human review are the live guard. The named
   enforcers `pre_live_gates`, `account_guard`, and the various `*-tests` are **future
