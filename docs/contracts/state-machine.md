@@ -80,8 +80,10 @@ confirm button = one `proposal_id` + one whitelisted `telegram_user_id` (replay-
 
 **Restart rule (idempotent):** on startup every `awaiting_confirmation` proposal is re-evaluated against
 wall-clock TTL **before** any new action; expired ones move to `expired` (no stale button can fire) [LAW].
-Confirm is **not** consumed until preflight passes — a crash between `confirmed` and order-submit re-enters
-preflight (idempotent by `order_id`, §5).
+For `confirmed` proposals, startup adopts an existing local/broker order for the deterministic `order_id`;
+if no such order exists, it rejects/expires the old confirm with `reason=restart_before_submit` and requires a
+fresh signal/proposal/confirm. Startup must never re-enter preflight and submit a newly-created entry order
+from an old confirm [LAW].
 
 ## 4. Preflight (the re-check between confirm and submit) (TZ §8)
 
@@ -99,7 +101,8 @@ state may have moved since the proposal was created:
 7. **Limit price construction** — reference + ≤ `order.max_entry_premium_pct` (0.20%), **rounded to a valid
    `min_price_increment` tick — DOWN for a buy** so the 0.20% ceiling is never exceeded [LAW] (TZ §8).
 
-Pass → build the entry order with a **fresh client `order_id`** and submit (§5); the proposal stays `confirmed`
+Pass → build the entry order with a **deterministic client `order_id` for this `proposal_id`**, derived or
+persisted before any broker call and reused on every retry/restart (§5); the proposal stays `confirmed`
 (its lifecycle now lives on the `orders` row, §3). Fail → proposal `confirmed → rejected` (§3); `audit_journal:
 preflight_failed` + Telegram alert; no order.
 
@@ -119,7 +122,7 @@ client idempotency key on **every** `PostOrder` (db-schema §3.2). TTL = `config
 | `submitted` | wall-clock TTL elapsed, **0 filled** | `cancel_requested` → `cancelled` | cancel sent; **no resubmit** (one attempt) [LAW]; alert (TTL cancel) | §8 |
 | `partially_filled` | remainder fully executes | `filled` | remaining `fills`; position avg/qty updated | §8 |
 | `partially_filled` | wall-clock TTL elapsed with remainder open | `cancel_requested` → `cancelled` | **cancel the remainder; KEEP + manage the filled position** [LAW] (no chase) | §8 |
-| `submitted`/`partially_filled` | `pause` issued | (unchanged) | open entry orders **kept**; monitoring/exits continue (pause blocks NEW entries only) [LAW] | §7.8 |
+| `submitted`/`partially_filled` | `pause` issued | `cancel_requested` → `cancelled` | **cancel any unfilled entry quantity**; if partially filled, KEEP + manage the filled position; monitoring/protective exits continue; no live entry BUY order may remain while paused [LAW] | §7.8 |
 | `submitted`/`partially_filled` | `kill` issued | `cancel_requested` → `cancelled` | **cancel active orders; NEVER sell** the filled portion [LAW] | §7.8 |
 | `submitted`/`partially_filled`/`cancel_requested` | broker/local disagree (state, qty, missing order) at reconcile | `reconcile_required` | freeze acting on this order; raise reconciliation (§10) | §8 |
 | `cancel_requested` | broker confirms cancel | `cancelled` | terminal; if partial earlier, the filled position persists | §8 |
@@ -168,7 +171,7 @@ multiple fire the same cycle.
 
 | From (`control_state.mode`) | Command / event | To | Effect [LAW] | TZ |
 | --- | --- | --- | --- | --- |
-| `running` | `/pause` | `paused` | **block NEW entries**; keep monitoring + automated exits; keep existing orders | §7.8 |
+| `running` | `/pause` | `paused` | **block NEW entries**; cancel/cancel-request still-live entry BUY orders; keep monitoring + automated exits/protective exit orders | §7.8 |
 | `running` | `/kill` | `killed` | stop the bot; **cancel active orders only** (§5); **NEVER sell positions** | §7.8 |
 | `paused` | `/resume` | `running` | requires **extra confirmation + preflight** (§4) before re-enabling entries | §7.8 |
 | `paused` | `/kill` | `killed` | as above | §7.8 |
@@ -177,9 +180,9 @@ multiple fire the same cycle.
 | `blocked_reconciliation_mismatch` | 2 consecutive clean reconciliations + owner confirm | `running` | exit the blocked state only after reconcile clears | §8 |
 | any | `/kill` | `killed` | kill is always reachable; idempotent | §7.8 |
 
-**`pause` vs `kill` (the load-bearing distinction):** `pause` blocks **new entries** but the position FSM
-(§6) keeps running — monitoring and **automated exits stay on**. `kill` halts the engine and cancels open
-orders but **must never itself sell a position** — exits become a manual owner action only. **`resume` from
+**`pause` vs `kill` (the load-bearing distinction):** `pause` blocks **new entries** and cancels any still-live
+entry BUY quantity so it cannot fill after the pause, but the position FSM (§6) keeps running — monitoring and
+**automated exits stay on**. `kill` halts the engine and cancels open orders but **must never itself sell a position** — exits become a manual owner action only. **`resume` from
 either state requires extra confirmation AND a fresh preflight** [LAW]; resume from `killed` additionally
 requires a clean startup reconciliation.
 
@@ -217,9 +220,11 @@ errors** [LAW].
 1. Read `control_state` first; if `killed` stay killed; if `blocked_reconciliation_mismatch` keep the blocked
    policy until cleared.
 2. Re-evaluate every `awaiting_confirmation` proposal against **wall-clock** TTL → `expired` if elapsed (§3).
-   Resolve every stale `confirmed` proposal (a crash between confirm and submit, §3): if its `order_id` already
-   produced a broker order, adopt that order's true state (§5, idempotent by `order_id`); otherwise re-run
-   preflight (§4) — pass → submit, fail → `rejected`. No `confirmed` proposal is left dangling [LAW].
+   Resolve every `confirmed` proposal before any new action: if a local/broker order exists for its deterministic
+   `order_id`, adopt broker truth (§5, idempotent by `order_id`); if no such order exists, transition
+   `confirmed → rejected` (or `expired` if TTL elapsed), audit `reason=restart_before_submit`, alert the owner,
+   and require a fresh signal/proposal/confirm. **Startup must never submit a newly-created entry order from an
+   old confirmed proposal** [LAW].
 3. Reconcile orders/positions/cash; retry up to **3×** with backoff `60s / 180s / 300s`; require **2
    consecutive clean checks** before normal trading (`reconciliations.result = clean`).
 4. Persistent mismatch → `reconciliations.result = mismatch` then `control_state.mode =
@@ -264,9 +269,9 @@ duplicate order).
   row); TZ §8).
 - **Limit-only / no margin / no shorts / long-only** — `orders.type=LIMIT` only; sell ≤ held qty
   (frozen-decisions.md, "Order & risk rules" (limit-only row); TZ §7.2, §9).
-- **`kill` cancels orders but NEVER sells; `pause` blocks new entries but keeps monitoring + exits; `resume`
-  needs extra confirmation + preflight** (frozen-decisions.md, "Order & risk rules" (kill/pause/resume row);
-  TZ §7.8, §8).
+- **`kill` cancels orders but NEVER sells; `pause` blocks new entries, cancels/cancel-requests still-live entry
+  BUY orders, and keeps monitoring + exits; `resume` needs extra confirmation + preflight** (frozen-decisions.md,
+  "Order & risk rules" (kill/pause/resume row); TZ §7.8, §8).
 - **Confirm-first** — entries require a whitelisted-user confirm on a TTL-bound proposal; preflight re-checks
   on confirm (frozen-decisions.md, "Order & risk rules" (confirm-first row); TZ §8, §10).
 - **Account guard** — `account_id == config.account_id` asserted at submit and reconcile (frozen-decisions.md,

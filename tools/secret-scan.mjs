@@ -10,7 +10,7 @@
 // Usage:
 //   node tools/secret-scan.mjs           # scan staged changes (pre-commit)
 //   node tools/secret-scan.mjs --all     # scan all tracked files
-// Exit 0 = clean; exit 1 = suspected secret(s) found (commit/push blocked).
+// Exit 0 = clean; exit 1 = suspected secret(s) found; exit 2 = scanner infrastructure failure.
 
 import { execSync, execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -25,8 +25,8 @@ let ROOT;
 try {
   ROOT = git("rev-parse --show-toplevel").trim();
 } catch {
-  process.stderr.write("secret-scan: not inside a git repository.\n");
-  process.exit(0); // nothing to guard
+  process.stderr.write("secret-scan: unable to locate git repository; failing closed.\n");
+  process.exit(2);
 }
 
 const ALL = process.argv.includes("--all");
@@ -54,12 +54,6 @@ function isPlaceholder(value) {
   return false;
 }
 
-// Paths whose token-shaped content is legitimate (the placeholder template).
-function isAllowlistedPath(rel) {
-  const base = path.basename(rel);
-  return base === ".env.example";
-}
-
 // Only scan plausibly-textual files; skip binary/large blobs.
 function looksBinary(buf) {
   const n = Math.min(buf.length, 8000);
@@ -77,6 +71,8 @@ function trackedFiles() {
   return out.split("\0").filter(Boolean);
 }
 
+const readErrors = [];
+
 function contentOf(rel) {
   if (ALL) {
     const abs = path.join(ROOT, rel);
@@ -85,6 +81,7 @@ function contentOf(rel) {
       if (looksBinary(buf) || buf.length > 1_000_000) return null;
       return buf.toString("utf8");
     } catch {
+      readErrors.push(rel);
       return null;
     }
   }
@@ -94,12 +91,13 @@ function contentOf(rel) {
     if (looksBinary(buf) || buf.length > 1_000_000) return null;
     return buf.toString("utf8");
   } catch {
+    readErrors.push(rel);
     return null;
   }
 }
 
 // --- scan --------------------------------------------------------------------
-const files = (ALL ? trackedFiles() : stagedFiles()).filter((f) => !isAllowlistedPath(f));
+const files = ALL ? trackedFiles() : stagedFiles();
 const findings = [];
 
 for (const rel of files) {
@@ -128,6 +126,12 @@ if (findings.length) {
       "False positive? Adjust tools/secret-scan.mjs allow-lists deliberately.\n",
   );
   process.exit(1);
+}
+
+if (readErrors.length) {
+  process.stderr.write("secret-scan: unable to read file content; failing closed.\n");
+  for (const rel of readErrors) process.stderr.write(`  ${rel}\n`);
+  process.exit(2);
 }
 
 process.stdout.write(`secret-scan: clean (${files.length} ${ALL ? "tracked" : "staged"} file(s) scanned).\n`);

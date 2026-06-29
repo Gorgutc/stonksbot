@@ -157,6 +157,7 @@ pre-PR/CI; `verifyCommand` is a back-compat alias). Harness tooling:
 
 ```bash
 node tools/check-kit.mjs                              # harness integrity / parity
+node tools/test-gates.mjs                             # regression tests for gate scripts
 node tools/codex-orchestrator/fanout.mjs --doctor     # orchestrator prerequisites
 node tools/evidence-gate.mjs                          # fail-closed evidence gate (if configured)
 node tools/install-hooks.mjs                          # git pre-commit/pre-push gates (installed & live: run on every commit/push; worktrees inherit .git/hooks)
@@ -182,9 +183,10 @@ npm run build
   tests it, then trades a tiny **dedicated** account in **confirm mode** (bot
   proposes an entry, the human confirms in Telegram; protective exits are
   automated). Codex/Claude BUILD, review, and document — **never** decide buy/sell.
-- **Status:** PREPARATION PHASE — **no bot code yet.** This repo holds only the
-  agent harness + a pointer to the Second Brain. Implementation starts from a future
-  **TZ (spec)**. Until then every component is a **dormant profile** — introduce no
+- **Status:** PREPARATION PHASE — **no bot code yet.** This repo holds the agent
+  harness, the TZ/contracts/ops planning layer, and a pointer to the Second Brain.
+  Implementation code starts only after an explicit request activates a component
+  profile. Until then every component is a **dormant profile** — introduce no
   toolchain/build for a dormant component without an explicit request (see
   `component-guardian` + `docs/profiles/`). The Second Brain vault is the cross-session
   memory: read `1-Projects/stonksbot/_INDEX.md` → `Conventions.md` 🔒 → latest session
@@ -202,8 +204,9 @@ npm run build
   entry next session, no intraday lookahead**; conservative backtest fills + costs
   both sides; startup reconciliation; `kill` stops the bot + cancels orders but
   **never sells positions**.
-- **Verification:** none yet (empty repo) — `verify.*` are null so the post-edit hook
-  no-ops. When a profile activates and code lands, set `.agent-kit.json`
+- **Verification:** no project-code verify command yet — `verify.*` are null so the post-edit hook
+  no-ops for dormant profiles. Harness/gate checks still exist (`check-kit`, `test-gates`,
+  `secret-scan`, `evidence-gate`). When a profile activates and code lands, set `.agent-kit.json`
   `verify.fast`/`verify.deep` (Python: `ruff` + `pytest`) and mirror them here. Any
   change to a strategy/backtest surface must carry walk-forward + cost-sensitivity
   evidence (evidence gate).

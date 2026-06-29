@@ -119,12 +119,13 @@ S3–S6 need the broker adapter (TZ §9), which only exists from **M4**:
    is `0` or `> 1` matches, or if `> 1` account exists and none matches (G2 — **no "pick the first" fallback**).
 3. **S5 name:** take the matched row's display name → log + dashboard banner (G3 name half).
 4. **S6 token scope** (couples to the frozen token-scope check, TZ §9 / [config-and-secrets.md](config-and-secrets.md) §1):
-   the active-mode token's scope must cover **exactly** this account. **Account-scoped tokens are NOT available
-   for Инвесткопилка / Счёт под ключ / Смарт-счёт** [verify] — so whether the bot account's **product type**
+   the active-mode token must be present and mode-correct. **Account-scoped tokens are NOT available for
+   Инвесткопилка / Счёт под ключ / Смарт-счёт** [verify] — so whether the bot account's **product type**
    supports account-scoping is **empirical, confirmable only with the live account at M4**. **[owner-pending /
-   verify — decision 3]:** if scoping is unavailable for the chosen account type, the system **relies on the
-   `account_id` guard (S4) as the scoping mechanism** and still BLOCKS on an over-broad/unexpected scope — it
-   never silently downgrades to "any account this token can reach".
+   verify — decision 3]:** S6 blocks missing/read-only/wrong-mode scopes, but does not block solely because the
+   live token is full-access when account-scoping is verified unavailable. This fallback is allowed only after
+   the product type is verified and the owner records the guard-only posture; the `account_id` guard (S4) is then
+   load-bearing and must pass before trading.
 
 > **Reconciliation tie-in (TZ §8):** on every startup/restart **and** periodic reconcile, re-assert S4 (the live
 > matched account is still the configured one) and the row-level invariant (§5). A drift here → reconciliation
@@ -177,8 +178,9 @@ The **last-run account_id** needed by S2/G4 is **operational state**, not a conf
 
 - **[owner-pending / verify — decision 3]** Bot-account **product type** → whether **account-scoped tokens** are
   feasible (unavailable for Инвесткопилка / Счёт под ключ / Смарт-счёт). **Empirical, confirmable only with the
-  live account at M4.** If infeasible, S6 relies on the `account_id` guard (S4) and still blocks on an
-  over-broad scope. *(Mirrors [config-and-secrets.md](config-and-secrets.md) §6 last bullet — do not assert a value.)*
+  live account at M4.** If infeasible, S6 permits a full-access live token only after the owner records the
+  guard-only posture; S6 still blocks missing/read-only/wrong-mode scopes, and the `account_id` guard (S4) is
+  load-bearing. *(Mirrors [config-and-secrets.md](config-and-secrets.md) §6 last bullet — do not assert a value.)*
 - **[verify]** Exact SDK method/shape for `GetAccounts` (id, name, type, status fields) against the pinned
   `t-tech-investments` SDK — confirm at M4 integration.
 - **[owner-pending]** Persistence home of the **last-run `account_id`** for the G4 change-detection (guard-state

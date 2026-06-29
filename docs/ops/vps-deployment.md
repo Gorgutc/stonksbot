@@ -175,8 +175,10 @@ DASHBOARD_AUTH_TOKEN           # dashboard bearer (always); opaque random >=32 c
 - **Separate token per mode [LAW]:** only the token for the **active** `mode` is required at startup; a
   missing token for an inactive mode is not an error. During M6a the VPS runs `paper`/`sandbox` only, so no
   live token is present on the VPS until M6b.
-- **Startup scope check BLOCKS trading [LAW]:** refuse to start (not warn) if the active token's scope is
-  missing / over-broad / not account-scoped ([config-and-secrets.md](../contracts/config-and-secrets.md) §1).
+- **Startup scope check BLOCKS trading [LAW]:** refuse to start (not warn) if the active token is missing,
+  wrong-mode, read-only for `confirm`, or over-broad when account-scoping is available/required. If
+  account-scoping is verified unavailable and owner-recorded, the guard-only full-access fallback relies on the
+  `account_id` guard ([config-and-secrets.md](../contracts/config-and-secrets.md) §1).
 - **Secret-scan gate [LAW]:** the pre-commit secret-scan gate (`tools/secret-scan.mjs`,
   [config-and-secrets.md](../contracts/config-and-secrets.md) §5; TZ §16) must be green **before any live
   profile activates** — committing any non-placeholder `*_TOKEN` / `DASHBOARD_AUTH_TOKEN` value is a leak.

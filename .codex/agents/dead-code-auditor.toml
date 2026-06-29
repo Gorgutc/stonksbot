@@ -1,5 +1,7 @@
 name = "dead-code-auditor"
 description = "Finds unused, duplicated, or unreachable code, and flags what is unsafe to remove."
+sandbox_mode = "read-only"
+
 developer_instructions = """
 <!-- Mirror of .codex/agents/dead_code_auditor.toml — keep in sync; run: node tools/check-kit.mjs -->\r
 \r

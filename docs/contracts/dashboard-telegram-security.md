@@ -119,7 +119,9 @@ replay-protected** (TZ §10 "one-shot, TTL, replay-protected").
   "proposal expired", do **not** act.
 - **Restart safety** [LAW]: a proposal created before a restart is **re-evaluated and expired on resume** — no
   stale button fires (TZ §8). On startup the bot scans `proposals` in `awaiting_confirmation`, and any past its
-  wall-clock TTL is set to `expired` **before** any callback is processed.
+  wall-clock TTL is set to `expired` **before** any callback is processed. A stale `confirmed` proposal with no
+  existing local/broker order for its deterministic `order_id` is rejected/expired and alerts the owner; startup
+  must never submit a newly-created entry order from an old confirm.
 
 ### 4.2 Replay / stale-press protection (old button press) [LAW]
 A confirm button is **single-use**. The defense is **state-based, not just time-based**:
@@ -208,13 +210,14 @@ frozen control semantics (TZ §7 (Controls, item 8); frozen-decisions.md, "Order
 | Command | `control_state.mode` → | Effect | LAW |
 | --- | --- | --- | --- |
 | `kill` | `killed` | stop bot + **cancel active orders only** — **NEVER sells positions** | [LAW] kill never sells |
-| `pause` | `paused` | block new entries; **keep monitoring + automated exits** | [LAW] |
+| `pause` | `paused` | block new entries; cancel/cancel-request still-live entry BUY orders; **keep monitoring + automated exits/protective exit orders** | [LAW] |
 | `resume` | `running` | **extra confirmation + preflight** before re-enabling entries | [LAW] |
 
 - **`kill` never sells** [LAW] (frozen-decisions.md, "Order & risk rules" (kill/pause row): "stops the bot and
   cancels active orders only — it does NOT sell positions"). The Telegram `kill` handler cancels open orders and stops the loop; it issues **no sell
   order**, ever. A protective/manual exit is a separate, explicit action (§6, §10 alerts).
-- `pause` keeps risk exits running (monitoring on); only **new entries** are blocked.
+- `pause` keeps risk exits running (monitoring on); **new entries** are blocked and any still-live entry BUY
+  quantity is cancelled/cancel-requested so it cannot fill after pause.
 - `resume` requires an **extra confirmation step** (a second whitelisted confirm) **and** a preflight + startup
   reconciliation gate before entries resume (TZ §7 (Controls, item 8), §8).
 - All three are persisted in `control_state.mode` so a pause/kill survives a restart (db-schema

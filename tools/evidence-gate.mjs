@@ -12,7 +12,7 @@
 // Changed files = union of unstaged + staged + untracked, plus optionally
 // `--base <ref>` (files changed since <ref>).
 
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -62,14 +62,41 @@ function gitLines(cmd) {
     return [];
   }
 }
+function gitLinesArgs(args) {
+  try {
+    return execFileSync("git", args, { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } catch (error) {
+    throw new Error(`git ${args.join(" ")} failed with status ${error.status ?? "unknown"}`);
+  }
+}
 
 function changedFiles(base) {
   const set = new Set();
   for (const f of gitLines("git diff --name-only")) set.add(f);
   for (const f of gitLines("git diff --name-only --cached")) set.add(f);
   for (const f of gitLines("git ls-files --others --exclude-standard")) set.add(f);
-  if (base) for (const f of gitLines(`git diff --name-only ${base}...HEAD`)) set.add(f);
+  if (base) for (const f of gitLinesArgs(["diff", "--name-only", `${base}...HEAD`])) set.add(f);
   return [...set];
+}
+
+function requiredEvidenceMissing(req, useHead) {
+  if (useHead) {
+    const rel = req.replace(/\\/g, "/");
+    try {
+      return execFileSync("git", ["show", `HEAD:${rel}`], { cwd: ROOT, stdio: ["ignore", "pipe", "ignore"] }).length === 0;
+    } catch {
+      return true;
+    }
+  }
+
+  try {
+    return fs.statSync(path.join(ROOT, req)).size === 0;
+  } catch {
+    return true; // absent
+  }
 }
 
 function main() {
@@ -88,20 +115,21 @@ function main() {
     return 0;
   }
 
-  const changed = changedFiles(base);
+  let changed;
+  try {
+    changed = changedFiles(base);
+  } catch (error) {
+    process.stderr.write("evidence-gate: unable to inspect changed files; failing closed.\n");
+    process.stderr.write(`${error.message}\n`);
+    return 2;
+  }
   const problems = [];
 
   gates.forEach((gate, i) => {
     const changedGlobs = (gate.changed || []).map(globToRegExp);
     const matched = changed.filter((f) => changedGlobs.some((re) => re.test(f)));
     if (!matched.length) return; // gate not triggered
-    const missing = (gate.requires || []).filter((req) => {
-      try {
-        return fs.statSync(path.join(ROOT, req)).size === 0;
-      } catch {
-        return true; // absent
-      }
-    });
+    const missing = (gate.requires || []).filter((req) => requiredEvidenceMissing(req, Boolean(base)));
     if (missing.length) {
       problems.push({
         gate: gate.note || `gate #${i + 1}`,

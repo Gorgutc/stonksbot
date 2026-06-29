@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Codex fan-out orchestrator (read-only by default).
 //
-// Lets an agent (Claude Code, or you) act as an ORCHESTRATOR and fan a job out
-// to many parallel `codex exec` turns. Orchestration runs on the Claude/Anthropic
-// side; the Codex turns run on your Codex/ChatGPT plan. Two quota pools at once.
+// Lets an agent harness (Codex, Claude Code, or you) act as an ORCHESTRATOR and
+// fan a job out to many parallel `codex exec` turns. Orchestration runs on the
+// current harness side; the Codex turns run on your Codex/ChatGPT plan.
 //
 // Zero dependencies: only Node built-ins. Copy this single file anywhere.
 // It does NOT depend on any Claude Code / Codex plugin — only the standalone

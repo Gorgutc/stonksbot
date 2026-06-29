@@ -5,9 +5,9 @@
 > Legend: `[ ]` todo · `[~]` in progress · `[x]` done. Each milestone names the `.agent-kit.json`
 > profile it activates (`dormant → active` when the milestone starts).
 
-## Current state (2026-06-27)
+## Current state (2026-06-29)
 - **Phase:** preparation complete → ready to start **M0**.
-- **Done:** agent harness (check-kit 36/36), Second Brain folder, frozen invariants, comprehensive TZ
+- **Done:** agent harness (`check-kit` currently reports 43 checks / 0 failed), Second Brain folder, frozen invariants, comprehensive TZ
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
   Merged to `main` (latest `44022e1`).
 - **No bot code yet** — all profiles `dormant`. M0 is the first to write code.
@@ -16,7 +16,7 @@
   SDK = `t-tech-investments` via GitLab, `GetDividends`, auction close, НДФЛ 13/15%); **secret-scan gate added**.
   Contracts passed an adversarial audit (4 majors fixed). **M0 code NOT started** — awaiting owner go-ahead to
   activate `research-backtest`. See ADR-0005 + Second Brain `Improvements.md` §"Решения владельца".
-- **M1-M6 design-contract layer DRAFTED (2026-06-27 #4):** 17 contracts in `docs/contracts/` + `docs/ops/`
+- **M1-M6 design-contract layer DRAFTED (2026-06-27 #4):** 18 contracts in `docs/contracts/` + 2 ops docs in `docs/ops/`
   (data-layer, strategy, backtest, state-machine, reconciliation, broker-adapter, universe-eligibility,
   session-policy, journal-reporting, dashboard-telegram-security, pre-live-gates, testing-strategy,
   account-guard-split, tax-open-questions, tax-fixture, local-deployment, vps-deployment) — design only, no code;

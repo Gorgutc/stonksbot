@@ -14,7 +14,7 @@ Run this before any substantial work in a new session.
    - **Narrow** (one file / one focused change) → do it directly, verify, done.
    - **Broad** (audit / multi-file / "across everything" / parallelizable) → use the
      `fanout-orchestrator` skill (decompose → parallel Codex agents) and/or the
-     read-only subagents in `.codex/agents` / `.Codex/agents`.
+     read-only subagents in `.codex/agents` / `.claude/agents`.
 4. Pick the skills/subagents and state the plan in one line before editing.
 5. Emit a short `bootstrap: ready` summary: project, branch, task class, chosen
    skills/agents, verify command.
