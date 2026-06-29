@@ -7,10 +7,10 @@ tiny **dedicated** account in **confirm mode** — the bot proposes an entry, th
 confirms in Telegram, and protective exits are automated. Codex/Claude build, review,
 and document the system; they never decide buy/sell.
 
-> **Status: preparation phase — no bot code yet.** This repo holds the agent
-> harness (Codex + Claude Code + Gemini), the TZ/contracts/ops planning layer, and
-> a link to the cross-session memory (the Second Brain vault). Implementation code
-> starts when a dormant profile is explicitly activated.
+> **Status: M0 foundations in progress.** `main@ca0c04e` / PR #5 completed the
+> readiness layer; this branch starts the Python research/backtest skeleton for
+> the active `research-backtest` profile. Broker/execution profiles remain
+> dormant.
 
 ## Read first
 - `AGENTS.md` — single source of truth for every agent harness (see PROJECT SPECIFICS).
@@ -26,9 +26,11 @@ and document the system; they never decide buy/sell.
 - Domain skills: `risk-policy-guardian`, `backtest-honesty`, `broker-api-contract`,
   `secrets-token-policy`, `state-machine-discipline` (plus the kit's generic skills).
 - Domain subagents: `risk-invariant-auditor`, `lookahead-auditor` (plus the kit's 7).
-- All components are **dormant profiles** (`docs/profiles/`) — no toolchain/build is
-  introduced until the TZ flips one to `active` (`component-guardian` enforces).
-- Self-check: `node tools/check-kit.mjs`.
+- Profile status lives in `.agent-kit.json`: `research-backtest` is active for M0;
+  `broker-adapter` and `execution-confirm` remain dormant until explicitly
+  activated (`component-guardian` enforces).
+- Project verify: `ruff check . && pytest -q`.
+- Harness self-check: `node tools/check-kit.mjs`.
 - Gate regression tests: `node tools/test-gates.mjs`.
 
 ## Safety (non-negotiable — see `docs/frozen-decisions.md`)

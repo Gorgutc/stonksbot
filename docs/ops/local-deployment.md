@@ -7,7 +7,8 @@
 > **[owner-pending]** = a value/mechanism the owner must confirm before it is locked (do not silently fix it).
 > **[verify]** = depends on a `docs/contracts/` or §20 fact still being confirmed by research `whq6u1gxe` /
 > empirical at M4/M6. **Doc only — this contract introduces NO toolchain, dependency, or build step**; the
-> `deployment` component stays a **dormant profile** until the owner activates it (see `component-guardian`).
+> deployment/VPS work stays a **dormant ops scope** until the owner activates it (see `component-guardian`);
+> no separate `deployment` profile is declared in `.agent-kit.json` yet.
 >
 > Pairs with [config-and-secrets.md](../contracts/config-and-secrets.md), [db-schema.md](../contracts/db-schema.md),
 > and [tax-and-dividends.md](../contracts/tax-and-dividends.md).
@@ -149,7 +150,7 @@ schema must evolve **without losing or silently rewriting** the evidence.
 ## 9. R7 — VPS migration seams (TZ §17) — documented, not built here
 
 This Windows-local contract names the explicit switch points so nothing is silently introduced. The VPS work is a
-**separate M6a contract** and the `deployment`/VPS profile stays **dormant** until activated (`component-guardian`).
+**separate M6a contract** and the deployment/VPS ops scope stays **dormant** until activated (`component-guardian`).
 
 | Seam | Local (this contract) | VPS (separate, deferred) | TZ |
 | --- | --- | --- | --- |
@@ -239,4 +240,4 @@ re-prompting interactively (the host runs unattended).
   [db-schema.md](../contracts/db-schema.md) (epoch-ms UTC, `control_state`, `audit_journal`, `source_version`,
   enum vocabularies), [tax-and-dividends.md](../contracts/tax-and-dividends.md) (journal/PnL the backups preserve).
 - Skills: `secrets-token-policy`, `state-machine-discipline`, `risk-policy-guardian`. Profiles: `component-guardian`
-  (deployment/VPS stays dormant until activated).
+  (deployment/VPS ops scope stays dormant until activated).

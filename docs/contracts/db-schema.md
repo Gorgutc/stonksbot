@@ -188,7 +188,7 @@ CREATE TABLE positions (
   id              INTEGER PRIMARY KEY,
   instrument_uid  TEXT NOT NULL REFERENCES instrument_reference(instrument_uid),
   account_id      TEXT NOT NULL,                                 -- must equal the guarded bot account
-  qty             INTEGER NOT NULL,
+  qty             INTEGER NOT NULL CHECK (qty > 0),              -- long-only; short-shaped state rejected
   avg_price_units INTEGER NOT NULL,
   avg_price_nano  INTEGER NOT NULL CHECK (avg_price_nano BETWEEN -999999999 AND 999999999),
   opened_at       INTEGER NOT NULL,

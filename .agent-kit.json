@@ -1,11 +1,11 @@
 {
   "name": "stonksbot",
   "verify": {
-    "fast": null,
-    "deep": null,
-    "ship": null
+    "fast": "ruff check . && pytest -q",
+    "deep": "pytest",
+    "ship": "pytest --maxfail=1 -q"
   },
-  "verifyCommand": null,
+  "verifyCommand": "ruff check . && pytest -q",
   "verifyPaths": [],
   "broadTaskTriggers": [
     "backtest", "walk-forward", "walk forward", "strategy", "risk engine", "reconciliation",
@@ -25,5 +25,5 @@
     }
   ],
   "forbiddenTerms": ["Next.js", "Tailwind", "Playwright", "WPF", "Avalonia", "FlyleafLib", "WinForms", "Unreal Engine", "Blender", "bpy"],
-  "notes": "PRE-M0 AUTHORIZED (owner decision 2026-06-29) - no bot code yet, but M0 starts next session and research-backtest is the only active profile. broker-adapter and execution-confirm remain DORMANT: no broker order placement, Telegram execution, live/sandbox trading, or dependencies for those profiles may be introduced until explicitly activated. This readiness branch intentionally does not add the Python toolchain yet; the first M0 code branch must set verify.fast='ruff check . && pytest -q', verify.deep='pytest', verify.ship='pytest --maxfail=1 -q' when pyproject/tests land, and mirror them in AGENTS.md. Harness/gate checks still exist via check-kit, test-gates, secret-scan, and evidence-gate. broadTaskTriggers extend the fan-out nudge with trading-domain terms (RU+EN). forbiddenTerms catch stack-name leakage from sibling agent-kits (web-frontend / desktop-GUI / 3D tooling) - stonksbot is a Python backend trading lab. The git hooks are installed and live: pre-commit and pre-push run on every commit/push (worktrees inherit the main repo .git/hooks). evidenceGates fire only after tools/install-hooks.mjs is installed and the strategy/backtest surface exists."
+  "notes": "M0 FOUNDATIONS IN PROGRESS (owner decision 2026-06-29) - research-backtest is the only active profile and now has the initial Python package/test/tooling skeleton. broker-adapter and execution-confirm remain DORMANT: no broker order placement, Telegram execution, live/sandbox trading, or dependencies for those profiles may be introduced until explicitly activated. Project verify is ruff + pytest for the M0 Python surface; harness/gate checks still exist via check-kit, test-gates, secret-scan, and evidence-gate. broadTaskTriggers extend the fan-out nudge with trading-domain terms (RU+EN). forbiddenTerms catch stack-name leakage from sibling agent-kits (web-frontend / desktop-GUI / 3D tooling) - stonksbot is a Python backend trading lab. The git hooks are installed and live: pre-commit and pre-push run on every commit/push (worktrees inherit the main repo .git/hooks). evidenceGates fire only after tools/install-hooks.mjs is installed and the strategy/backtest surface exists."
 }

@@ -1,8 +1,8 @@
 # Contract — Testing strategy (TZ §18)
 
-> **Status:** M0 contract, **resolved on paper (no test code yet)**. This pins the **shape and minimum
-> required coverage** of the test suite so that, once a component profile is `active`, the tests are written
-> verbatim against this contract. **`docs/frozen-decisions.md` 🔒 wins** on any conflict; tests **encode**
+> **Status:** M0 contract, with the first pytest suite now present. This pins the
+> **shape and minimum required coverage** of the test suite as later component
+> profiles add implementation. **`docs/frozen-decisions.md` 🔒 wins** on any conflict; tests **encode**
 > the frozen invariants, they never relax them. **[owner-pending]** = a value the owner/build must confirm
 > (do not silently fix it). **[verify]** = depends on an empirical/integration fact still open.
 >
@@ -12,7 +12,7 @@
 > (cost/risk keys under test), [tax-and-dividends.md](tax-and-dividends.md) (the НДФЛ fixture).
 
 This contract feeds: the M0+ test layout, the M2 tax fixture, the M3 walk-forward / cost-sensitivity evidence,
-and the per-PR auditor gates. It does **not** invent verify commands — those land at M0 (see §9).
+and the per-PR auditor gates. Current project verify commands are defined in `.agent-kit.json` (see §9).
 
 ---
 
@@ -144,9 +144,9 @@ Subagents + the `lookahead-auditor` / `risk-invariant-auditor` contracts):
 - **Evidence gate (machine):** in addition to the human/agent gates, `.agent-kit.json` `evidenceGates` requires
   `docs/evidence/walk-forward-latest.md` when `**/strategy/**`/`**/backtest/**`/`**/signals/**` change — this
   fires only **after** `tools/install-hooks.mjs` is installed and the surface exists.
-- These gates are **review/agent** guards now (preparation phase); they become **wired** only when a profile is
-  `active` and code lands — same caveat as frozen-decisions.md, "Known drift / owner decisions pending" ("Enforced by … tests/code" is aspirational
-  until then).
+- These gates are **review/agent** guards now for the M0 skeleton; they become
+  deeper wired tests as each guarded surface lands. A defer never overrides a
+  blocker.
 
 ## 6. Test data & fixtures
 - **Fixtures are committed, deterministic, and hand-checkable.** The М2 НДФЛ fixture (tax §8) and small candle
@@ -188,11 +188,9 @@ Subagents + the `lookahead-auditor` / `risk-invariant-auditor` contracts):
   (frozen-decisions.md, "Strategy, data & backtest honesty" (managed registry row), db-schema §2).
 
 ## 9. Open questions / owner-pending
-- **`verify.*` commands** — `.agent-kit.json` `verify.fast`/`verify.deep`/`verify.ship` are **null by design**
-  in this readiness branch because no Python package/tests exist yet; the concrete commands (intended
-  `ruff check . && pytest -q` fast / `pytest` deep, per AGENTS.md/`.agent-kit.json` notes) **land in the first
-  M0 code branch** with `pyproject.toml`. Treated here as a **[owner-pending]** placeholder — this contract
-  does **not** assert them. **[owner-pending]**
+- **`verify.*` commands** — current M0 commands are wired in `.agent-kit.json`:
+  `verify.fast = "ruff check . && pytest -q"`, `verify.deep = "pytest"`, and
+  `verify.ship = "pytest --maxfail=1 -q"`.
 - **Coverage threshold** (§7) — set at M0 with the verify commands; no % asserted here. **[owner-pending]**
 - **NDFL rounding direction** in the fixture (math-round vs floor) and partial-lot FIFO split — pinned in the M2
   fixture (tax §8, §9). **[verify]**

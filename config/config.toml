@@ -1,0 +1,75 @@
+mode = "paper"
+db_path = "./stonksbot.db"
+timezone = "Europe/Moscow"
+daily_run_time = "19:05"
+close_definition = "auction_close"
+benchmarks = ["IMOEX", "MCFTR", "cash", "equal_weight"]
+index_source = "moex_iss"
+moex_auction_shift_date = 2026-03-23
+dividend_gap_block_days = 2
+db_switch_point = "sqlite_to_postgres_at_vps_m6"
+
+[dashboard]
+bind = "127.0.0.1"
+port = 8765
+
+[telegram]
+user_whitelist = []
+button_ttl_minutes = 45
+
+[universe]
+approved = ["SBER", "T", "GAZP", "ROSN", "TATN", "X5"]
+watch_only = ["IRAO", "LKOH"]
+managed_only = []
+blocked = []
+pending = []
+
+[eligibility]
+max_lot_value_pct = 30
+max_spread_bps = 50
+min_turnover_rub = 50000000
+min_trading_days = 40
+
+[risk]
+capital_rub = 10000
+max_open_positions = 1
+max_position_rub = 3000
+max_position_pct = 30
+cash_reserve_pct = 50
+daily_hard_stop_rub = 100
+max_proposals_per_day = 1
+risk_per_trade_rub = 50
+hard_stop_pct = 4.0
+reentry_cooldown_days = 5
+market_regime_index_ma = 50
+market_regime_5d_floor_pct = -5.0
+allowed_trading_status = "NORMAL_TRADING"
+
+[strategy]
+ma_fast = 20
+ma_slow = 50
+pullback_min_pct = 2.0
+pullback_max_pct = 6.0
+take_profit_pct = 6.0
+trailing_pct = 3.0
+trend_support_ma = 20
+trend_break_ma = 50
+
+[order]
+type = "LIMIT"
+ttl_minutes = 45
+max_entry_premium_pct = 0.20
+
+[costs]
+tariff = "investor"
+investor_commission_bps = 30
+trader_commission_bps = 5
+trader_monthly_fee_rub = 390
+slippage_bps = 10
+min_commission_units = 0
+min_commission_nano = 10000000
+iceberg_surcharge_bps = 1
+
+[data_conflict]
+close_divergence_pct = 0.5
+recheck_delay_minutes = 30

@@ -3,8 +3,9 @@
 This file is the **single source of truth** for every agent harness in this
 project: OpenAI **Codex** (reads `AGENTS.md` natively), **Claude Code** (imports
 it through `CLAUDE.md` via `@AGENTS.md`), and **Gemini** (`GEMINI.md` redirect
-stub). Additional harnesses get a **redirect stub only** — canonical skills are
-never mirrored per harness.
+stub). Additional harnesses get a **redirect stub only**. Harness-specific skill
+files may exist only as exact mirrors for tooling compatibility; `check-kit`
+enforces those mirrors so they are not independent rule sets.
 
 > This file ships from a reusable **agent-kit** starter. Fill in the
 > `PROJECT SPECIFICS` section per project; the rest is harness scaffolding that
@@ -86,8 +87,8 @@ installed) the `codex@openai-codex` Claude Code plugin for a single review/rescu
 
 ## Skills
 
-Generic, stack-agnostic skills in `.claude/skills/` (Codex reads their guidance
-from this file):
+Generic, stack-agnostic skills in `.claude/skills/` and `.agents/skills/`
+(mirrored for harness compatibility; `tools/check-kit.mjs` enforces parity):
 
 - `session-bootstrap` — start-of-task: read instructions, check git, classify
   narrow vs broad, pick skills/agents.
@@ -161,9 +162,7 @@ node tools/test-gates.mjs                             # regression tests for gat
 node tools/codex-orchestrator/fanout.mjs --doctor     # orchestrator prerequisites
 node tools/evidence-gate.mjs                          # fail-closed evidence gate (if configured)
 node tools/install-hooks.mjs                          # git pre-commit/pre-push gates (installed & live: run on every commit/push; worktrees inherit .git/hooks)
-# project examples — set these in .agent-kit.json
-npm test
-npm run build
+ruff check . && pytest -q                             # project verify.fast
 ```
 
 ## Done when
@@ -183,12 +182,11 @@ npm run build
   tests it, then trades a tiny **dedicated** account in **confirm mode** (bot
   proposes an entry, the human confirms in Telegram; protective exits are
   automated). Codex/Claude BUILD, review, and document — **never** decide buy/sell.
-- **Status:** PRE-M0 AUTHORIZED — **no bot code yet.** Owner decision on
-  2026-06-29 starts **M0 in the next session** and activates only the
-  `research-backtest` profile. This readiness branch keeps the repo at the
-  harness/TZ/contracts/ops layer; the M0 code branch may introduce the Python
-  research/backtest toolchain. `broker-adapter` and `execution-confirm` remain
-  **dormant** — introduce no broker order placement, Telegram execution,
+- **Status:** M0 FOUNDATIONS IN PROGRESS. Owner decision on 2026-06-29 activated
+  only the `research-backtest` profile after `main@ca0c04e` / PR #5 completed
+  readiness. This branch introduces the Python research/backtest package,
+  config loader, SQLite DDL, account-guard stub, and ruff/pytest verification.
+  `broker-adapter` and `execution-confirm` remain **dormant** — introduce no broker order placement, Telegram execution,
   live/sandbox trading dependency, or build command for those profiles without an
   explicit activation request (see `component-guardian` + `docs/profiles/`). The
   Second Brain vault is the cross-session memory: read
@@ -207,13 +205,12 @@ npm run build
   entry next session, no intraday lookahead**; conservative backtest fills + costs
   both sides; startup reconciliation; `kill` stops the bot + cancels orders but
   **never sells positions**.
-- **Verification:** no project-code verify command yet — this readiness branch
-  intentionally leaves `verify.*` null because no Python package/tests exist yet.
-  Harness/gate checks still exist (`check-kit`, `test-gates`, `secret-scan`,
-  `evidence-gate`). When the first M0 code lands, set `.agent-kit.json`
-  `verify.fast`/`verify.deep`/`verify.ship` (Python: `ruff` + `pytest`) and mirror
-  them here. Any change to a strategy/backtest surface must carry walk-forward +
-  cost-sensitivity evidence (evidence gate).
+- **Verification:** project-code verify is now Python M0: `.agent-kit.json`
+  `verify.fast = "ruff check . && pytest -q"`, `verify.deep = "pytest"`, and
+  `verify.ship = "pytest --maxfail=1 -q"`. Harness/gate checks still exist
+  (`check-kit`, `test-gates`, `secret-scan`, `evidence-gate`). Any change to a
+  strategy/backtest surface must carry walk-forward + cost-sensitivity evidence
+  (evidence gate).
 - **Do-not-touch:** secrets/tokens (never in code/config/logs/dashboard/Telegram —
   env/secret store only); the frozen risk policy in `docs/frozen-decisions.md`; the
   Second Brain protocol. Record durable decisions in `docs/frozen-decisions.md` AND
