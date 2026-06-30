@@ -5,14 +5,18 @@
 > Legend: `[ ]` todo · `[~]` in progress · `[x]` done. Each milestone names the `.agent-kit.json`
 > profile it activates (`dormant → active` when the milestone starts).
 
-## Current state (2026-06-29)
-- **Phase:** **M0 complete** — CI shipped in PR #7 (merged `main@14dadb4`); foundations in PR #6. Verify + harness gates run on PR/main.
+## Current state (2026-06-30)
+- **Phase:** **M0 complete** — CI shipped in PR #7 (merged `main@14dadb4`);
+  PR #8 then synced status/vault wording, so current main is `9e5fcff`. Verify + harness gates run on PR/main.
 - **Done:** agent harness (`check-kit` currently reports 53 checks / 0 failed), Second Brain folder, frozen invariants, comprehensive TZ
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
-  Merged to `main` (latest verified `14dadb4` after PR #7; PR #6 shipped the M0 skeleton, PR #5 the pre-M0 readiness layer).
+  Merged to `main` (latest verified `9e5fcff` after PR #8; PR #7 closed M0 with CI,
+  PR #6 shipped the M0 skeleton, PR #5 the pre-M0 readiness layer).
 - **Initial M0 code shipped** — `research-backtest` is active; `broker-adapter` and
   `execution-confirm` remain dormant. The shipped M0 scope is config, schema, account-guard stub,
   and ruff/pytest verification only.
+- **M1.1 started (2026-06-30):** schema hardening now rejects negative/impossible quote pairs;
+  the first data-leg slice is MOEX ISS read-only candles with injected reader, no SDK/token/order path.
 - **Pre-M0 contract layer RESOLVED (2026-06-27 #3):** TZ §4.1/§5.1/§12.1 → `docs/contracts/`
   (config-and-secrets, db-schema, tax-and-dividends); `[verify]` gaps closed by research (index = MOEX ISS,
   SDK = `t-tech-investments` via GitLab, `GetDividends`, auction close, НДФЛ 13/15%); **secret-scan gate added**.
@@ -41,8 +45,8 @@
   `verify.ship = "pytest --maxfail=1 -q"`
 - **Exit:** `check-kit` green + `verify.fast`/`verify.deep`/`verify.ship` green; profile checklist "data schema recorded" checked.
 
-### M1 — Data layer  `[ ]`  (research-backtest)
-- [ ] T-Invest read-only + MOEX ISS fallback/cross-check; `candles` + `instrument_reference` (uid-keyed) **+ index series** (IMOEX/MCFTR — MOEX ISS, ADR-0005)
+### M1 — Data layer  `[~]`  (research-backtest)
+- [~] T-Invest read-only + MOEX ISS fallback/cross-check; `candles` + `instrument_reference` (uid-keyed) **+ index series** (IMOEX/MCFTR — MOEX ISS, ADR-0005). Current slice: MOEX ISS read-only candles only, no SDK/token/order path.
 - [ ] **universe registry + status transitions** (managed-registry invariant); eligibility filters
 - [ ] snapshot versioning; **`data_conflict` DETECTION/flagging tested** (historical/synthetic; live skip-entry asserted in M4)
 - [ ] split adjustment + ticker-history (TCSG→T) + dividend calendar (T-Invest GetDividends, ADR-0005)

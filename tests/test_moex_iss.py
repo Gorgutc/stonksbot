@@ -1,0 +1,130 @@
+from __future__ import annotations
+
+from datetime import UTC, date, datetime
+from decimal import Decimal
+
+import pytest
+
+from stonksbot.data.moex_iss import (
+    build_candles_url,
+    fetch_daily_candles,
+    loads_iss_json,
+    parse_candles,
+)
+
+
+def test_build_candles_url_uses_daily_index_endpoint() -> None:
+    url = build_candles_url(
+        "imoex",
+        market="index",
+        from_date=date(2026, 6, 1),
+        till_date=date(2026, 6, 30),
+    )
+
+    assert url.startswith("https://iss.moex.com/iss/engines/stock/markets/index/")
+    assert "/securities/IMOEX/candles.json?" in url
+    assert "interval=24" in url
+    assert "from=2026-06-01" in url
+    assert "till=2026-06-30" in url
+
+
+def test_loads_iss_json_preserves_decimal_values() -> None:
+    payload = '{"candles":{"columns":["begin","open"],"data":[["2026-06-01",123.45]]}}'
+
+    data = loads_iss_json(payload)
+
+    assert data["candles"]["data"][0][1] == Decimal("123.45")
+
+
+def test_parse_candles_returns_epoch_ms_and_quotation_pairs() -> None:
+    payload = {
+        "candles": {
+            "columns": ["begin", "open", "high", "low", "close", "volume"],
+            "data": [
+                [
+                    "2026-06-27",
+                    Decimal("3210.12"),
+                    Decimal("3220.50"),
+                    Decimal("3201.01"),
+                    Decimal("3215.99"),
+                    123456789,
+                ]
+            ],
+        }
+    }
+
+    candles = parse_candles(payload, secid="IMOEX", market="index")
+
+    assert len(candles) == 1
+    candle = candles[0]
+    assert candle.secid == "IMOEX"
+    assert candle.market == "index"
+    assert candle.source == "moex_iss"
+    assert candle.interval == "1day"
+    assert candle.ts == int(datetime(2026, 6, 27, tzinfo=UTC).timestamp() * 1000)
+    assert candle.open.units == 3210
+    assert candle.open.nano == 120_000_000
+    assert candle.close.units == 3215
+    assert candle.close.nano == 990_000_000
+    assert candle.volume == 123456789
+
+
+def test_parse_candles_rejects_float_prices() -> None:
+    payload = {
+        "candles": {
+            "columns": ["begin", "open", "high", "low", "close", "volume"],
+            "data": [["2026-06-27", 3210.12, Decimal("3220.50"), Decimal("3201.01"), Decimal("3215.99"), 1]],
+        }
+    }
+
+    with pytest.raises(TypeError, match="float"):
+        parse_candles(payload, secid="IMOEX", market="index")
+
+
+def test_parse_candles_rejects_sub_nano_price_precision() -> None:
+    payload = {
+        "candles": {
+            "columns": ["begin", "open", "high", "low", "close", "volume"],
+            "data": [
+                [
+                    "2026-06-27",
+                    Decimal("3210.1234567895"),
+                    Decimal("3220.50"),
+                    Decimal("3201.01"),
+                    Decimal("3215.99"),
+                    1,
+                ]
+            ],
+        }
+    }
+
+    with pytest.raises(ValueError, match="sub-nano"):
+        parse_candles(payload, secid="IMOEX", market="index")
+
+
+def test_fetch_daily_candles_uses_injected_reader_without_tokens() -> None:
+    captured_urls: list[str] = []
+
+    def read_text(url: str) -> str:
+        captured_urls.append(url)
+        return """
+        {
+          "candles": {
+            "columns": ["begin", "open", "high", "low", "close", "volume"],
+            "data": [["2026-06-27", 3210.12, 3220.50, 3201.01, 3215.99, 10]]
+          }
+        }
+        """
+
+    candles = fetch_daily_candles(
+        "IMOEX",
+        market="index",
+        from_date=date(2026, 6, 1),
+        till_date=date(2026, 6, 30),
+        read_text=read_text,
+    )
+
+    assert len(candles) == 1
+    assert captured_urls
+    assert "token" not in captured_urls[0].lower()
+    assert candles[0].source == "moex_iss"
