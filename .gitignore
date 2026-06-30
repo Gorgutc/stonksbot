@@ -28,7 +28,7 @@ build/
 *.sqlite
 *.sqlite3
 *.db
-data/
+/data/
 logs/
 
 # CLAUDE.local.md (machine-local Second-Brain pointer) is kept out of git via

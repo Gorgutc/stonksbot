@@ -1,8 +1,8 @@
 # Contract — SQLite schema DDL (TZ §5.1)
 
-> **Status:** M0 contract, **resolved on paper (no DB code yet)**. This is the **build-ready DDL** the M0
-> `data/` layer will create verbatim. It bakes the irreversible type/key/enum choices. **`docs/frozen-decisions.md` 🔒
-> wins.** Enum vocabularies below are **frozen** — a divergent enum silently weakens an invariant.
+> **Status:** M0 contract, implemented by `src/stonksbot/db.py`; schema hardening added on 2026-06-30.
+> This is the **build-ready DDL** the DB layer creates. It bakes the irreversible type/key/enum choices.
+> **`docs/frozen-decisions.md` wins.** Enum vocabularies below are **frozen** — a divergent enum silently weakens an invariant.
 > **[verify whq6u1gxe]** = a note pending the research workflow (index source, dividend source).
 > Pairs with [config-and-secrets.md](config-and-secrets.md) and [tax-and-dividends.md](tax-and-dividends.md).
 
@@ -12,7 +12,10 @@
 - **Money/price = NEVER float.** Store the T-Invest **Quotation**: `*_units` INTEGER + `*_nano` INTEGER, where
   value = `units + nano/1e9`. Applies to every price, `min_price_increment`, amount, commission, dividend.
   Exact equality is required for reconciliation/idempotency. Convert to `Decimal` for research math only.
-  - Rule: `units` and `nano` share sign; `-999_999_999 ≤ nano ≤ 999_999_999`.
+  - Current DB hardening rule for prices, market data, commissions, dividends, and `min_price_increment`:
+    `units >= 0`, `0 <= nano <= 999_999_999`, and the pair must be `> 0` where a price/dividend/tick is present.
+  - `cash_events.amount_*` is the signed accounting surface; its exact sign policy is intentionally separate
+    from market-price hardening.
 - **Timestamps = INTEGER epoch milliseconds UTC.** Never TEXT/native datetime. Display tz only at the edges.
 - **`instrument_uid` = TEXT**, the primary identifier (not FIGI).
 - **Booleans = INTEGER `0|1`** (SQLite has no bool; Postgres maps to BOOLEAN later).
@@ -44,6 +47,9 @@
 
 ```sql
 PRAGMA foreign_keys = ON;
+-- bootstrap sets PRAGMA user_version = 1 after creating the current schema and
+-- rejects existing core tables with any other user_version instead of silently
+-- running against stale CHECK constraints.
 
 -- 3.1 Reference data --------------------------------------------------------
 CREATE TABLE instrument_reference (
@@ -51,10 +57,10 @@ CREATE TABLE instrument_reference (
   ticker                    TEXT NOT NULL,
   instrument_kind           TEXT NOT NULL CHECK (instrument_kind IN ('share','index')),
   is_tradable               INTEGER NOT NULL CHECK (is_tradable IN (0,1)),  -- indices = 0
-  lot                       INTEGER,                             -- shares/lot (NULL for index)
+  lot                       INTEGER CHECK (lot IS NULL OR lot > 0), -- shares/lot (NULL for index)
   min_price_increment_units INTEGER,
   min_price_increment_nano  INTEGER CHECK (min_price_increment_nano IS NULL
-                              OR min_price_increment_nano BETWEEN -999999999 AND 999999999),
+                              OR min_price_increment_nano BETWEEN 0 AND 999999999),
   currency                  TEXT,
   trading_status            TEXT,                                -- last SecurityTradingStatus
   whitelist_status          TEXT CHECK (whitelist_status IN
@@ -70,7 +76,13 @@ CREATE TABLE instrument_reference (
   as_of                     INTEGER NOT NULL,
   -- indices: non-tradable, no whitelist; shares: tradable flag + whitelist vocabulary
   CHECK ((instrument_kind = 'index' AND is_tradable = 0 AND whitelist_status IS NULL)
-      OR (instrument_kind = 'share' AND whitelist_status IS NOT NULL))
+      OR (instrument_kind = 'share' AND whitelist_status IS NOT NULL)),
+  CHECK ((min_price_increment_units IS NULL AND min_price_increment_nano IS NULL)
+      OR (min_price_increment_units IS NOT NULL
+          AND min_price_increment_nano IS NOT NULL
+          AND min_price_increment_units >= 0
+          AND min_price_increment_nano >= 0
+          AND (min_price_increment_units > 0 OR min_price_increment_nano > 0)))
 );
 -- IMOEX (price) and MCFTR (total-return) live here as instrument_kind='index'
 -- (is_tradable=0, whitelist_status NULL) so benchmarks + market-regime have a home.
@@ -85,16 +97,24 @@ CREATE TABLE candles (
   interval       TEXT NOT NULL CHECK (interval IN ('1day')),     -- MVP = D1 only
   ts             INTEGER NOT NULL,                               -- epoch-ms UTC, canonical bar timestamp
   source_version INTEGER NOT NULL,
-  open_units  INTEGER NOT NULL, open_nano  INTEGER NOT NULL CHECK (open_nano  BETWEEN -999999999 AND 999999999),
-  high_units  INTEGER NOT NULL, high_nano  INTEGER NOT NULL CHECK (high_nano  BETWEEN -999999999 AND 999999999),
-  low_units   INTEGER NOT NULL, low_nano   INTEGER NOT NULL CHECK (low_nano   BETWEEN -999999999 AND 999999999),
-  close_units INTEGER NOT NULL, close_nano INTEGER NOT NULL CHECK (close_nano BETWEEN -999999999 AND 999999999),
-  volume      INTEGER NOT NULL,                                  -- integer shares/lots
+  open_units  INTEGER NOT NULL CHECK (open_units >= 0),
+  open_nano   INTEGER NOT NULL CHECK (open_nano BETWEEN 0 AND 999999999),
+  high_units  INTEGER NOT NULL CHECK (high_units >= 0),
+  high_nano   INTEGER NOT NULL CHECK (high_nano BETWEEN 0 AND 999999999),
+  low_units   INTEGER NOT NULL CHECK (low_units >= 0),
+  low_nano    INTEGER NOT NULL CHECK (low_nano BETWEEN 0 AND 999999999),
+  close_units INTEGER NOT NULL CHECK (close_units >= 0),
+  close_nano  INTEGER NOT NULL CHECK (close_nano BETWEEN 0 AND 999999999),
+  volume      INTEGER NOT NULL CHECK (volume >= 0),              -- integer shares/lots
   is_complete INTEGER NOT NULL CHECK (is_complete IN (0,1)),     -- =1 ONLY when the bar reflects close_definition's FINAL close (see §4) — no-lookahead gate
   is_stale    INTEGER NOT NULL DEFAULT 0 CHECK (is_stale IN (0,1)),
   adjusted    INTEGER NOT NULL DEFAULT 0 CHECK (adjusted IN (0,1)),  -- split-adjusted
   source      TEXT NOT NULL,                                     -- 'tinvest' | 'moex_iss'
   as_of       INTEGER NOT NULL,
+  CHECK (open_units > 0 OR open_nano > 0),
+  CHECK (high_units > 0 OR high_nano > 0),
+  CHECK (low_units > 0 OR low_nano > 0),
+  CHECK (close_units > 0 OR close_nano > 0),
   PRIMARY KEY (instrument_uid, interval, ts, source_version)     -- new load = new version, no overwrite
 );
 
@@ -106,15 +126,22 @@ CREATE TABLE dividends (
   record_date    INTEGER,                                        -- epoch-ms UTC (GetDividends 'to' filters on this)
   payment_date   INTEGER,                                        -- epoch-ms UTC
   declared_date  INTEGER,                                        -- epoch-ms UTC
-  gross_units    INTEGER NOT NULL,                               -- GROSS per-share (API field 'dividend_net' is mislabeled GROSS)
-  gross_nano     INTEGER NOT NULL CHECK (gross_nano BETWEEN -999999999 AND 999999999),
+  gross_units    INTEGER NOT NULL CHECK (gross_units >= 0),      -- GROSS per-share (API field 'dividend_net' is mislabeled GROSS)
+  gross_nano     INTEGER NOT NULL CHECK (gross_nano BETWEEN 0 AND 999999999),
   dividend_type  TEXT,                                           -- GetDividends dividend_type (ordinary/special/interim — affects gap block + total-return)
-  close_price_units INTEGER,                                     -- GetDividends close_price (API reference close), optional
-  close_price_nano  INTEGER CHECK (close_price_nano IS NULL OR close_price_nano BETWEEN -999999999 AND 999999999),
+  close_price_units INTEGER CHECK (close_price_units IS NULL OR close_price_units >= 0), -- optional
+  close_price_nano  INTEGER CHECK (close_price_nano IS NULL OR close_price_nano BETWEEN 0 AND 999999999),
   currency       TEXT NOT NULL,
   source         TEXT NOT NULL,                                  -- 'tinvest' (GetDividends); splits/renames -> 'moex_iss'
   source_version INTEGER NOT NULL,
   as_of          INTEGER NOT NULL,
+  CHECK (gross_units > 0 OR gross_nano > 0),
+  CHECK ((close_price_units IS NULL AND close_price_nano IS NULL)
+      OR (close_price_units IS NOT NULL
+          AND close_price_nano IS NOT NULL
+          AND close_price_units >= 0
+          AND close_price_nano >= 0
+          AND (close_price_units > 0 OR close_price_nano > 0))),
   PRIMARY KEY (instrument_uid, last_buy_date, source_version)
 );
 
@@ -159,15 +186,16 @@ CREATE TABLE orders (
   account_id      TEXT NOT NULL,                                 -- guarded bot account; assert == config.account_id at submit AND reconcile [LAW]
   side            TEXT NOT NULL CHECK (side IN ('buy','sell')),
   type            TEXT NOT NULL CHECK (type = 'LIMIT'),         -- LIMIT only [LAW]
-  price_units     INTEGER NOT NULL,
-  price_nano      INTEGER NOT NULL CHECK (price_nano BETWEEN -999999999 AND 999999999),
+  price_units     INTEGER NOT NULL CHECK (price_units >= 0),
+  price_nano      INTEGER NOT NULL CHECK (price_nano BETWEEN 0 AND 999999999),
   lots            INTEGER NOT NULL CHECK (lots > 0),
   state           TEXT NOT NULL CHECK (state IN
                     ('submitted','partially_filled','filled','cancel_requested','cancelled','reconcile_required')),
   broker_order_id TEXT,
   attempts        INTEGER NOT NULL DEFAULT 0,
   created_at      INTEGER NOT NULL,
-  updated_at      INTEGER NOT NULL
+  updated_at      INTEGER NOT NULL,
+  CHECK (price_units > 0 OR price_nano > 0)
 );
 -- long-only / no-shorts enforced in the risk engine (sell <= held qty); never stored as a short.
 
@@ -175,13 +203,14 @@ CREATE TABLE fills (
   id               INTEGER PRIMARY KEY,
   order_id         TEXT NOT NULL REFERENCES orders(order_id),
   ts               INTEGER NOT NULL,
-  price_units      INTEGER NOT NULL,
-  price_nano       INTEGER NOT NULL CHECK (price_nano BETWEEN -999999999 AND 999999999),
+  price_units      INTEGER NOT NULL CHECK (price_units >= 0),
+  price_nano       INTEGER NOT NULL CHECK (price_nano BETWEEN 0 AND 999999999),
   qty              INTEGER NOT NULL CHECK (qty > 0),
-  commission_units INTEGER NOT NULL,
-  commission_nano  INTEGER NOT NULL CHECK (commission_nano BETWEEN -999999999 AND 999999999),
+  commission_units INTEGER NOT NULL CHECK (commission_units >= 0),
+  commission_nano  INTEGER NOT NULL CHECK (commission_nano BETWEEN 0 AND 999999999),
   source           TEXT NOT NULL,
-  as_of            INTEGER NOT NULL
+  as_of            INTEGER NOT NULL,
+  CHECK (price_units > 0 OR price_nano > 0)
 );
 
 CREATE TABLE positions (
@@ -189,8 +218,8 @@ CREATE TABLE positions (
   instrument_uid  TEXT NOT NULL REFERENCES instrument_reference(instrument_uid),
   account_id      TEXT NOT NULL,                                 -- must equal the guarded bot account
   qty             INTEGER NOT NULL CHECK (qty > 0),              -- long-only; short-shaped state rejected
-  avg_price_units INTEGER NOT NULL,
-  avg_price_nano  INTEGER NOT NULL CHECK (avg_price_nano BETWEEN -999999999 AND 999999999),
+  avg_price_units INTEGER NOT NULL CHECK (avg_price_units >= 0),
+  avg_price_nano  INTEGER NOT NULL CHECK (avg_price_nano BETWEEN 0 AND 999999999),
   opened_at       INTEGER NOT NULL,
   closed_at       INTEGER,
   source          TEXT NOT NULL CHECK (source IN ('bot','manual_adopted','managed_only')),
@@ -198,7 +227,8 @@ CREATE TABLE positions (
   state           TEXT NOT NULL CHECK (state IN ('open','closed')),
   close_reason    TEXT CHECK (close_reason IN ('risk','trend','target_trailing','time','manual')),
   CHECK ((state = 'open'  AND closed_at IS NULL AND close_reason IS NULL)
-      OR (state = 'closed' AND closed_at IS NOT NULL AND close_reason IS NOT NULL))
+      OR (state = 'closed' AND closed_at IS NOT NULL AND close_reason IS NOT NULL)),
+  CHECK (avg_price_units > 0 OR avg_price_nano > 0)
 );
 
 -- 3.3 Cash, reconciliation, audit -----------------------------------------
@@ -277,6 +307,10 @@ CREATE INDEX idx_cash_events_ts        ON cash_events(ts);
 ```
 
 ## 4. Invariants encoded by the schema
+- **Schema version fail-closed** — existing SQLite DBs with core tables must carry the current
+  `PRAGMA user_version`; bootstrap rejects unversioned/stale schemas instead of using old CHECK constraints.
+- **No impossible prices** — price/market-data/commission/dividend/tick quote pairs reject negative values
+  and reject zero where a present price-like value must exist.
 - **No float money** — every monetary value is a `units`/`nano` integer pair.
 - **No-lookahead** — `candles.is_complete=1` only once the bar reflects the **final** close per
   `config.close_definition=auction_close` (owner-ratified 2026-06-29): the auction close from
