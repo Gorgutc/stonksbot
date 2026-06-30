@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class SchemaError(RuntimeError):
@@ -128,7 +128,19 @@ CREATE TABLE IF NOT EXISTS signals (
   ts INTEGER NOT NULL,
   features TEXT,
   decision TEXT NOT NULL CHECK (decision IN ('candidate','selected','skipped','risk_rejected')),
-  reason TEXT,
+  reason TEXT CHECK (
+    (
+      decision = 'skipped'
+      AND reason IS NOT NULL
+      AND reason IN (
+        'lot_too_expensive','low_liquidity','wide_spread','not_trading','data_missing','data_conflict'
+      )
+    )
+    OR (
+      decision IN ('candidate','selected','risk_rejected')
+      AND reason IS NULL
+    )
+  ),
   created_at INTEGER NOT NULL
 );
 

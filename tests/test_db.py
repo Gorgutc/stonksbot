@@ -42,7 +42,7 @@ def test_bootstrap_creates_core_tables_and_guard_state() -> None:
     }.issubset(table_names)
     assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     assert connection.execute("SELECT id, updated_at FROM guard_state").fetchone() == (1, 123)
-    assert connection.execute("PRAGMA user_version").fetchone() == (1,)
+    assert connection.execute("PRAGMA user_version").fetchone() == (2,)
 
 
 def test_bootstrap_rejects_existing_unversioned_schema() -> None:
@@ -66,8 +66,60 @@ def test_bootstrap_accepts_current_schema_reentry() -> None:
     bootstrap_database(connection, now_ms=123)
     bootstrap_database(connection, now_ms=456)
 
-    assert connection.execute("PRAGMA user_version").fetchone() == (1,)
+    assert connection.execute("PRAGMA user_version").fetchone() == (2,)
     assert connection.execute("SELECT id, updated_at FROM guard_state").fetchone() == (1, 123)
+
+
+def test_signals_reason_is_decision_aware_frozen_skip_code() -> None:
+    connection = _connection_with_share()
+
+    connection.execute(
+        """
+        INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+        VALUES ('uid-sber', 1, 'candidate', NULL, 1)
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+        VALUES ('uid-sber', 2, 'skipped', 'data_conflict', 2)
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+        VALUES ('uid-sber', 3, 'risk_rejected', NULL, 3)
+        """
+    )
+
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """
+            INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+            VALUES ('uid-sber', 4, 'skipped', 'typo_conflict', 4)
+            """
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """
+            INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+            VALUES ('uid-sber', 5, 'skipped', NULL, 5)
+            """
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """
+            INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+            VALUES ('uid-sber', 6, 'candidate', 'data_conflict', 6)
+            """
+        )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """
+            INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+            VALUES ('uid-sber', 7, 'risk_rejected', 'max_positions', 7)
+            """
+        )
 
 
 def test_orders_type_rejects_non_limit_orders() -> None:

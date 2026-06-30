@@ -51,7 +51,7 @@ The strategy is a pure function; the risk engine (TZ §7) decides. Exactly one o
 | (new candidate) | strategy emits a candidate for an `approved` ticker | `candidate` | row written, `features` JSON snapshot | §6 |
 | `candidate` | fails an eligibility filter (per-cycle, config §2.4) | `skipped` | `reason` ∈ `lot_too_expensive`\|`low_liquidity`\|`wide_spread`\|`not_trading`\|`data_missing`\|`data_conflict` (db-schema §2); **skip ≠ remove from approved** [LAW] | §7.3 |
 | `candidate` | passes eligibility, **wins** the ≤1/day ranking (§6) | `selected` | exactly **one** `proposal` created (`awaiting_confirmation`) | §6, §8 |
-| `candidate`/`selected` | a hard risk rule rejects (limit breach, regime, daily hard stop, max-positions, re-entry cooldown, dividend-gap, …) | `risk_rejected` | **recorded HERE only — NO order row** (db-schema §3.2); `reason` set | §7 |
+| `candidate`/`selected` | a hard risk rule rejects (limit breach, regime, daily hard stop, max-positions, re-entry cooldown, dividend-gap, …) | `risk_rejected` | **recorded HERE only — NO order row** (db-schema §3.2); `signals.reason` remains NULL until M4 pins a separate risk-rejection vocabulary; diagnostics go to `features` / audit detail | §7 |
 
 **Hard gating before `selected` (TZ §7, all [LAW]):** account_id guard passes; `control_state.mode = running`
 (not `paused`/`killed`/`blocked_reconciliation_mismatch`); market-regime OK (IMOEX close ≥ MA50 **and** 5d

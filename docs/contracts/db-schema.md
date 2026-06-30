@@ -1,6 +1,6 @@
 # Contract — SQLite schema DDL (TZ §5.1)
 
-> **Status:** M0 contract, implemented by `src/stonksbot/db.py`; schema hardening added on 2026-06-30.
+> **Status:** M0/M1 contract, implemented by `src/stonksbot/db.py`; schema hardening added on 2026-06-30.
 > This is the **build-ready DDL** the DB layer creates. It bakes the irreversible type/key/enum choices.
 > **`docs/frozen-decisions.md` wins.** Enum vocabularies below are **frozen** — a divergent enum silently weakens an invariant.
 > **[verify whq6u1gxe]** = a note pending the research workflow (index source, dividend source).
@@ -31,7 +31,7 @@
 | `instrument_reference.whitelist_status` | `approved`, `managed_only`, `watch_only`, `blocked`, `pending` (NULL for indices) |
 | `instrument_reference.data_status` | `ok`, `data_conflict` |
 | `signals.decision` | `candidate`, `selected`, `skipped`, `risk_rejected` |
-| `signals.reason` (skip codes) | `lot_too_expensive`, `low_liquidity`, `wide_spread`, `not_trading`, `data_missing`, `data_conflict` (frozen-decisions.md, "Strategy, data & backtest honesty" (per-cycle eligibility row)) |
+| `signals.reason` (skip codes; NULL unless `decision='skipped'`) | `lot_too_expensive`, `low_liquidity`, `wide_spread`, `not_trading`, `data_missing`, `data_conflict` (frozen-decisions.md, "Strategy, data & backtest honesty" (per-cycle eligibility row)) |
 | `proposals.state` | `awaiting_confirmation`, `confirmed`, `rejected`, `expired` |
 | `orders.side` | `buy`, `sell` |
 | `orders.type` | `LIMIT` (only — market/bestprice are hard-rejected upstream, not storable) |
@@ -47,7 +47,7 @@
 
 ```sql
 PRAGMA foreign_keys = ON;
--- bootstrap sets PRAGMA user_version = 1 after creating the current schema and
+-- bootstrap sets PRAGMA user_version = 2 after creating the current schema and
 -- rejects existing core tables with any other user_version instead of silently
 -- running against stale CHECK constraints.
 
@@ -163,10 +163,16 @@ CREATE TABLE signals (
   features       TEXT,                                           -- JSON snapshot (MA20/MA50, pullback, r/r, spread)
   decision       TEXT NOT NULL CHECK (decision IN
                    ('candidate','selected','skipped','risk_rejected')),
-  reason         TEXT,                                           -- skip/reject code: lot_too_expensive|low_liquidity|wide_spread|not_trading|data_missing|data_conflict (frozen vocab §2)
+  reason         TEXT CHECK (
+                   (decision = 'skipped'
+                    AND reason IS NOT NULL
+                    AND reason IN ('lot_too_expensive','low_liquidity','wide_spread','not_trading','data_missing','data_conflict'))
+                   OR (decision IN ('candidate','selected','risk_rejected') AND reason IS NULL)),
+                                                                 -- frozen skip vocab §2
   created_at     INTEGER NOT NULL
 );
--- Risk rejection is recorded HERE only (decision='risk_rejected', no order row).
+-- Risk rejection is recorded HERE only (decision='risk_rejected', no order row);
+-- risk diagnostics are not new signals.reason codes unless M4 pins a separate vocabulary in the same change.
 -- decision='selected' -> exactly one proposal is created.
 
 CREATE TABLE proposals (
@@ -309,6 +315,8 @@ CREATE INDEX idx_cash_events_ts        ON cash_events(ts);
 ## 4. Invariants encoded by the schema
 - **Schema version fail-closed** — existing SQLite DBs with core tables must carry the current
   `PRAGMA user_version`; bootstrap rejects unversioned/stale schemas instead of using old CHECK constraints.
+- **Frozen skip reasons** — `signals.reason` is NULL unless `decision='skipped'`; skipped rows must use one of
+  the six frozen eligibility/data codes. Non-canonical reason strings are rejected by SQLite, not normalized later.
 - **No impossible prices** — price/market-data/commission/dividend/tick quote pairs reject negative values
   and reject zero where a present price-like value must exist.
 - **No float money** — every monetary value is a `units`/`nano` integer pair.
