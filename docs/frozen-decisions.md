@@ -46,8 +46,8 @@ explicit owner decision; record it as an ADR in the Second Brain `Decisions/` to
 | --- | --- | --- |
 | **Limit orders only** — no market orders in MVP; **no margin, no shorts, long-only.** | Caps price/blow-up risk; market orders on low liquidity fill at bad prices. | `risk-policy-guardian`, `risk-invariant-auditor` |
 | **First live mode = `confirm`** (bot proposes, human confirms in Telegram); `auto_small` is architected but DISABLED in MVP. | Keeps a human at the point of opening risk. | `risk-policy-guardian`, review |
-| **Portfolio limits (pilot):** 10 000 ₽ start; **max 1 open position**; max position 3 000 ₽ / 30% of capital; 50% cash reserve; **≤ 1 new trade proposal per day.** | Survive-first sizing for the learning period. | `risk-policy-guardian`, risk-engine tests |
-| **Risk exits:** daily hard stop 100 ₽ (blocks new entries); hard stop-loss ~4%; trend-break exit (close below MA50); `target_then_trailing` (take-profit 6%, trailing 3%, trend support = close below MA20); time exit. | Automated protection without per-tick human babysitting. | `risk-policy-guardian`, position-manager tests |
+| **Portfolio limits (pilot):** 10 000 ₽ start; **max 1 open position**; max position 3 000 ₽ / 30% of capital; 50% cash reserve; **≤ 1 new trade proposal per day.** | Survive-first sizing for the learning period. | `risk-policy-guardian`, config loader band guard (`RiskSettings` model_validator, both directions), risk-engine tests |
+| **Risk exits:** daily hard stop 100 ₽ (blocks new entries); hard stop-loss ~4%; trend-break exit (close below MA50); `target_then_trailing` (take-profit 6%, trailing 3%, trend support = close below MA20); time exit. | Automated protection without per-tick human babysitting. | `risk-policy-guardian`, config loader caps `daily_hard_stop_rub` (`RiskSettings`), position-manager tests |
 | **Order TTL** ~45 min (30–60); if unfilled → cancel; if partially filled → cancel remainder & manage filled position; **no price chasing; one order attempt per signal.** | Avoid paying up to chase a moved price. | `state-machine-discipline`, execution tests |
 | **`kill`** stops the bot and cancels active orders **only — it does NOT sell positions.** `pause` blocks new entries but keeps monitoring + exits; `resume` needs extra confirmation + preflight. | A kill switch must never itself dump the portfolio. | `risk-invariant-auditor`, control tests |
 | **Every order carries a client order id (idempotency key);** no duplicate orders after a restart/retry; honor T-Invest rate limits (~50 req/s total, `postOrder` ~15 req/s) with backoff. | "Scheduler sent order submit twice" / duplicate orders after restart is a top real-world failure. | `state-machine-discipline`, `broker-api-contract`, execution tests |
@@ -67,6 +67,15 @@ explicit owner decision; record it as an ADR in the Second Brain `Decisions/` to
 | **State as an explicit machine with audit trail:** signal → proposal → confirm → order → (partial) fill → position → exit, with startup reconciliation and idempotent transitions; external/manual account changes are adopted via reconciliation, not treated as errors. | The expensive bugs live in state transitions, not in MA20/MA50. | `state-machine-discipline` skill, `risk-invariant-auditor` |
 
 ## Known drift / owner decisions pending
+- **Pilot risk band enforcement (2026-06-30, ADR-0008):** the config loader now
+  hard-caps the frozen pilot band at `RiskSettings` model construction, in BOTH
+  directions — a relaxed cap (above a ceiling / below the 50% cash floor) and a
+  nonsensical value (non-positive cap, or a > 100% cash reserve) both fail closed.
+  This closes the prior gap where `load_settings(validate_startup=False)` or direct
+  `RiskSettings` / `StonksbotSettings` construction could load an out-of-band config.
+  The frozen VALUES are unchanged; this only hardens enforcement. Portfolio-STATE
+  limits the config cannot express (the *actual* count of open positions,
+  one-order-per-signal, `account_id` match) remain the future M4 risk engine's job.
 - M0 foundations now exist in the active `research-backtest` profile: Python
   package skeleton, config loader, SQLite DDL, account-guard stub, and ruff/pytest
   verification. `broker-adapter` and `execution-confirm` remain dormant. Many

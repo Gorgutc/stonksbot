@@ -2,8 +2,9 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
-from stonksbot.config import ConfigError, load_settings
+from stonksbot.config import ConfigError, RiskSettings, load_settings
 
 
 def test_default_config_is_safe_paper_mode() -> None:
@@ -175,6 +176,66 @@ max_open_positions = 2
 
     with pytest.raises(ConfigError, match="max_open_positions"):
         load_settings(config_path=config_path, env={})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("capital_rub", 10_001),
+        ("max_open_positions", 2),
+        ("max_position_rub", 3_001),
+        ("max_position_pct", 31),
+        ("cash_reserve_pct", 49),
+        ("daily_hard_stop_rub", 101),
+        ("max_proposals_per_day", 2),
+    ],
+)
+def test_risk_settings_reject_relaxed_frozen_band_at_construction(
+    field: str, value: int
+) -> None:
+    # The frozen pilot band is enforced by a RiskSettings model_validator, so a
+    # relaxed cap fails closed at model construction with no startup pass required.
+    with pytest.raises(ValidationError, match=field):
+        RiskSettings(**{field: value})
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("capital_rub", 0),
+        ("capital_rub", -5),
+        ("max_open_positions", -1),
+        ("max_position_rub", 0),
+        ("max_position_rub", -100),
+        ("max_position_pct", 0),
+        ("cash_reserve_pct", 200),
+        ("daily_hard_stop_rub", 0),
+        ("daily_hard_stop_rub", -1),
+        ("max_proposals_per_day", -1),
+    ],
+)
+def test_risk_settings_reject_nonsensical_values(field: str, value: int) -> None:
+    # The frozen band is a band, not just a ceiling: non-positive caps and an
+    # impossible (>100%) cash reserve are rejected as well.
+    with pytest.raises(ValidationError):
+        RiskSettings(**{field: value})
+
+
+def test_validate_startup_false_does_not_bypass_frozen_band(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+mode = "paper"
+[risk]
+max_open_positions = 2
+""".strip(),
+        encoding="utf-8",
+    )
+
+    # Even with startup validation skipped, the relaxed cap cannot load: the band
+    # is enforced at model construction, closing the validate_startup=False bypass.
+    with pytest.raises(ConfigError, match="max_open_positions"):
+        load_settings(config_path=config_path, env={}, validate_startup=False)
 
 
 def test_env_example_contains_only_placeholders() -> None:

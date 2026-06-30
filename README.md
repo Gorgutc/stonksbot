@@ -7,13 +7,16 @@ tiny **dedicated** account in **confirm mode** — the bot proposes an entry, th
 confirms in Telegram, and protective exits are automated. Codex/Claude build, review,
 and document the system; they never decide buy/sell.
 
-> **Status: M0 complete.** M0 closed in PR #7 (`main@14dadb4`); current main after
-> PR #10 M1 ISS pagination/status sync is `7b9c4e1`. The active `research-backtest` profile has
-> the Python skeleton — config loader, SQLite DDL/bootstrap, and a fail-closed
-> account-guard stub with pytest coverage — plus CI (`.github/workflows/ci.yml`,
-> verify + harness gates on PR/main). M1.1 has landed with schema hardening and a
-> read-only MOEX ISS data leg; PR #10 fixed ISS pagination/cursor fail-closed behavior
-> and `signals.reason` checks. Broader M1 data work remains in progress. Broker/execution profiles remain dormant.
+> **Status: M0 complete; M1 in progress.** M0 closed in PR #7 (`main@14dadb4`); the
+> M1 data layer has since landed PR #9 (schema hardening + read-only MOEX ISS leg),
+> PR #10 (ISS pagination/cursor fail-closed + `signals.reason` checks), and PR #11
+> (versioned data-store + latest-as-of read path + `data_conflict` gating, SQLite
+> `SCHEMA_VERSION = 3`), so current main is `9bb8eda`. The active `research-backtest`
+> profile has the Python skeleton — config loader, SQLite DDL/bootstrap, and a
+> fail-closed account-guard stub with pytest coverage — plus CI
+> (`.github/workflows/ci.yml`, verify + harness gates on PR/main). Broader M1 data
+> work (universe registry, eligibility, dividend/split/calendar) remains in progress.
+> Broker/execution profiles remain dormant.
 
 ## Read first
 - `AGENTS.md` — single source of truth for every agent harness (see PROJECT SPECIFICS).
