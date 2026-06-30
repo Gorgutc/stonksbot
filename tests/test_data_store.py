@@ -254,6 +254,166 @@ def test_persistent_data_conflict_marks_registry_and_emits_skip_signal() -> None
     )
 
 
+def test_record_persistent_data_conflict_is_idempotent_per_open_bar() -> None:
+    connection = _connection_with_share()
+
+    first_conflict_id, first_signal_id = record_persistent_data_conflict(
+        connection,
+        instrument_uid="uid-sber",
+        ts=10,
+        kind="close_divergence",
+        detail={"moex_iss": "100.00", "tinvest": "100.60"},
+        as_of=20,
+    )
+    second_conflict_id, second_signal_id = record_persistent_data_conflict(
+        connection,
+        instrument_uid="uid-sber",
+        ts=10,
+        kind="close_divergence",
+        detail={"moex_iss": "100.00", "tinvest": "100.90"},
+        as_of=30,
+    )
+
+    assert second_conflict_id == first_conflict_id
+    assert second_signal_id == first_signal_id
+    assert connection.execute(
+        "SELECT COUNT(*) FROM data_conflicts WHERE instrument_uid = 'uid-sber'"
+    ).fetchone() == (1,)
+    assert connection.execute(
+        "SELECT COUNT(*) FROM signals WHERE decision = 'skipped' AND reason = 'data_conflict'"
+    ).fetchone() == (1,)
+    # the earliest detection time is kept as the conservative entry-block start
+    assert connection.execute(
+        "SELECT as_of FROM data_conflicts WHERE id = ?",
+        (first_conflict_id,),
+    ).fetchone() == (20,)
+
+
+def test_resolved_conflict_recurrence_opens_a_new_open_row() -> None:
+    connection = _connection_with_share()
+
+    first_conflict_id, first_signal_id = record_persistent_data_conflict(
+        connection,
+        instrument_uid="uid-sber",
+        ts=10,
+        kind="close_divergence",
+        detail={"moex_iss": "100.00", "tinvest": "100.60"},
+        as_of=20,
+    )
+    resolve_data_conflict(connection, conflict_id=first_conflict_id, as_of=30)
+
+    second_conflict_id, second_signal_id = record_persistent_data_conflict(
+        connection,
+        instrument_uid="uid-sber",
+        ts=10,
+        kind="close_divergence",
+        detail={"moex_iss": "100.00", "tinvest": "101.20"},
+        as_of=40,
+    )
+
+    assert second_conflict_id != first_conflict_id
+    assert connection.execute(
+        """
+        SELECT id, resolved
+        FROM data_conflicts
+        WHERE instrument_uid = 'uid-sber' AND ts = 10 AND kind = 'close_divergence'
+        ORDER BY id
+        """
+    ).fetchall() == [(first_conflict_id, 1), (second_conflict_id, 0)]
+    # the resolved row is not swallowed; the recurrence is a fresh open conflict
+    assert connection.execute(
+        "SELECT COUNT(*) FROM data_conflicts WHERE instrument_uid = 'uid-sber' AND resolved = 0"
+    ).fetchone() == (1,)
+    # the per-bar skip signal is reused across the resolve/recur cycle, never duplicated
+    assert second_signal_id == first_signal_id
+    assert connection.execute(
+        "SELECT COUNT(*) FROM signals WHERE decision = 'skipped' AND reason = 'data_conflict'"
+    ).fetchone() == (1,)
+
+
+def test_open_data_conflicts_partial_unique_is_enforced_at_db_level() -> None:
+    connection = _connection_with_share()
+
+    connection.execute(
+        "INSERT INTO data_conflicts (instrument_uid, ts, kind, as_of) "
+        "VALUES ('uid-sber', 10, 'missing_bar', 20)"
+    )
+    # a second OPEN row with the same (instrument_uid, ts, kind) is rejected by the partial index
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            "INSERT INTO data_conflicts (instrument_uid, ts, kind, as_of) "
+            "VALUES ('uid-sber', 10, 'missing_bar', 30)"
+        )
+    # a RESOLVED row with the same key is allowed: the index is partial on resolved = 0
+    connection.execute(
+        "INSERT INTO data_conflicts (instrument_uid, ts, kind, resolved, resolved_as_of, as_of) "
+        "VALUES ('uid-sber', 10, 'missing_bar', 1, 40, 20)"
+    )
+    assert connection.execute(
+        "SELECT COUNT(*) FROM data_conflicts "
+        "WHERE instrument_uid = 'uid-sber' AND ts = 10 AND kind = 'missing_bar'"
+    ).fetchone() == (2,)
+
+
+def test_redetect_keeps_earliest_as_of_even_when_observed_out_of_order() -> None:
+    connection = _connection_with_share()
+
+    first_conflict_id, _signal_id = record_persistent_data_conflict(
+        connection,
+        instrument_uid="uid-sber",
+        ts=10,
+        kind="close_divergence",
+        detail={"observed": 1},
+        as_of=30,
+    )
+    # a later call carrying an EARLIER as_of must lower the block start, never raise it
+    record_persistent_data_conflict(
+        connection,
+        instrument_uid="uid-sber",
+        ts=10,
+        kind="close_divergence",
+        detail={"observed": 2},
+        as_of=20,
+    )
+
+    assert connection.execute(
+        "SELECT as_of FROM data_conflicts WHERE id = ?",
+        (first_conflict_id,),
+    ).fetchone() == (20,)
+
+
+def test_distinct_conflict_kinds_on_same_bar_share_one_skip_signal() -> None:
+    connection = _connection_with_share()
+
+    record_persistent_data_conflict(
+        connection,
+        instrument_uid="uid-sber",
+        ts=10,
+        kind="missing_bar",
+        detail=None,
+        as_of=20,
+    )
+    record_persistent_data_conflict(
+        connection,
+        instrument_uid="uid-sber",
+        ts=10,
+        kind="close_divergence",
+        detail=None,
+        as_of=20,
+    )
+
+    # kind is part of the conflict key, so two open rows coexist ...
+    assert connection.execute(
+        "SELECT COUNT(*) FROM data_conflicts WHERE instrument_uid = 'uid-sber' AND ts = 10 AND resolved = 0"
+    ).fetchone() == (2,)
+    # ... but the bar is skipped exactly once
+    assert connection.execute(
+        "SELECT COUNT(*) FROM signals "
+        "WHERE instrument_uid = 'uid-sber' AND ts = 10 "
+        "AND decision = 'skipped' AND reason = 'data_conflict'"
+    ).fetchone() == (1,)
+
+
 def test_dividends_are_versioned_and_known_as_of_is_decision_time_safe() -> None:
     connection = _connection_with_share()
 
