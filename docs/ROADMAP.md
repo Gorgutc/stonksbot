@@ -7,16 +7,24 @@
 
 ## Current state (2026-06-30)
 - **Phase:** **M0 complete; M1 in progress** — CI shipped in PR #7 (merged `main@14dadb4`);
-  PR #9 landed M1.1 schema/ISS data work, so current main is `549eb68`. Verify + harness gates run on PR/main.
+  PR #9 landed M1.1 schema/ISS data work; PR #10 fixed ISS pagination/cursor
+  fail-closed behavior and `signals.reason` checks, so current main is `7b9c4e1`.
+  Verify + harness gates run on PR/main.
 - **Done:** agent harness (`check-kit` currently reports 53 checks / 0 failed), Second Brain folder, frozen invariants, comprehensive TZ
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
-  Merged to `main` (latest verified `549eb68` after PR #9; PR #7 closed M0 with CI,
+  Merged to `main` (latest verified `7b9c4e1` after PR #10; PR #7 closed M0 with CI,
   PR #6 shipped the M0 skeleton, PR #5 the pre-M0 readiness layer).
 - **Initial M0 code shipped** — `research-backtest` is active; `broker-adapter` and
   `execution-confirm` remain dormant. The shipped M0 scope is config, schema, account-guard stub,
   and ruff/pytest verification only.
 - **M1.1 landed (2026-06-30, PR #9):** schema hardening rejects negative/impossible quote pairs;
-  the first data-leg slice is MOEX ISS read-only candles with injected reader, no SDK/token/order path.
+  the first data-leg slice is MOEX ISS read-only candles with injected reader and no order path.
+- **M1 blocker fix landed (2026-06-30, PR #10):** MOEX ISS candle fetch paginates
+  to cursor `TOTAL`, fails closed on missing cursor/short pages, rejects duplicate
+  candle timestamps, and enforces decision-aware frozen `signals.reason` checks.
+- **Current branch M1 slice:** versioned data-store helpers add insert-only candle/dividend
+  snapshots, latest-as-of read gates, entry-safe stale/conflict filters, persistent
+  `data_conflict` skip signals, and schema guards for selected/confirmed proposal-to-order flow.
 - **Pre-M0 contract layer RESOLVED (2026-06-27 #3):** TZ §4.1/§5.1/§12.1 → `docs/contracts/`
   (config-and-secrets, db-schema, tax-and-dividends); `[verify]` gaps closed by research (index = MOEX ISS,
   SDK = `t-tech-investments` via GitLab, `GetDividends`, auction close, НДФЛ 13/15%); **secret-scan gate added**.
@@ -46,9 +54,9 @@
 - **Exit:** `check-kit` green + `verify.fast`/`verify.deep`/`verify.ship` green; profile checklist "data schema recorded" checked.
 
 ### M1 — Data layer  `[~]`  (research-backtest)
-- [~] T-Invest read-only + MOEX ISS fallback/cross-check; `candles` + `instrument_reference` (uid-keyed) **+ index series** (IMOEX/MCFTR — MOEX ISS, ADR-0005). Current slice: MOEX ISS read-only candles only, no SDK/token/order path.
+- [~] T-Invest read-only + MOEX ISS fallback/cross-check; `candles` + `instrument_reference` (uid-keyed) **+ index series** (IMOEX/MCFTR — MOEX ISS, ADR-0005). Current slice: MOEX ISS read-only candles with pagination/fail-closed checks; no broker/execution SDK, full-access/live token, Telegram, or order path.
 - [ ] **universe registry + status transitions** (managed-registry invariant); eligibility filters
-- [ ] snapshot versioning; **`data_conflict` DETECTION/flagging tested** (historical/synthetic; live skip-entry asserted in M4)
+- [~] snapshot versioning/read path; **`data_conflict` DETECTION/flagging tested** (current branch covers insert-only snapshots, latest-as-of reads, stale/conflict entry skips, dividend `as_of` gating, persistent conflict skip signals; historical/synthetic divergence fixtures and live skip-entry asserted in M4 remain)
 - [ ] split adjustment + ticker-history (TCSG→T) + dividend calendar (T-Invest GetDividends, ADR-0005)
 - **Exit:** reproducible versioned 3y dataset (+ warm-up) incl. index; detection path tested.
 

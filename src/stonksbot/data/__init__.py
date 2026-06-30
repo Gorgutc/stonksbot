@@ -1,2 +1,2 @@
-"""Read-only market data adapters for research/backtest flows."""
+"""Read-only market data adapters and persistence helpers for research/backtest flows."""
 

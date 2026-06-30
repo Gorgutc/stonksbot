@@ -47,7 +47,7 @@
 
 ```sql
 PRAGMA foreign_keys = ON;
--- bootstrap sets PRAGMA user_version = 2 after creating the current schema and
+-- bootstrap sets PRAGMA user_version = 3 after creating the current schema and
 -- rejects existing core tables with any other user_version instead of silently
 -- running against stale CHECK constraints.
 
@@ -152,7 +152,10 @@ CREATE TABLE data_conflicts (
   kind           TEXT NOT NULL CHECK (kind IN ('close_divergence','missing_bar','duplicate_bar')),
   detail         TEXT,                                           -- JSON {tinvest, iss, divergence_pct}
   resolved       INTEGER NOT NULL DEFAULT 0 CHECK (resolved IN (0,1)),
-  as_of          INTEGER NOT NULL
+  resolved_as_of INTEGER,                                        -- epoch-ms when the conflict stopped blocking new entries
+  as_of          INTEGER NOT NULL,
+  CHECK ((resolved = 0 AND resolved_as_of IS NULL)
+      OR (resolved = 1 AND resolved_as_of IS NOT NULL AND resolved_as_of >= as_of))
 );
 
 -- 3.2 Strategy / decision flow ---------------------------------------------
@@ -186,8 +189,10 @@ CREATE TABLE proposals (
 );
 
 CREATE TABLE orders (
-  order_id        TEXT PRIMARY KEY,                              -- CLIENT idempotency key (every PostOrder)
+  order_id        TEXT NOT NULL PRIMARY KEY
+                  CHECK (length(trim(order_id)) > 0),           -- CLIENT idempotency key (every PostOrder)
   proposal_id     TEXT REFERENCES proposals(proposal_id),       -- NULL for protective exits
+  position_id     INTEGER REFERENCES positions(id),             -- required for protective sell exits
   instrument_uid  TEXT NOT NULL REFERENCES instrument_reference(instrument_uid),
   account_id      TEXT NOT NULL,                                 -- guarded bot account; assert == config.account_id at submit AND reconcile [LAW]
   side            TEXT NOT NULL CHECK (side IN ('buy','sell')),
@@ -201,9 +206,13 @@ CREATE TABLE orders (
   attempts        INTEGER NOT NULL DEFAULT 0,
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL,
-  CHECK (price_units > 0 OR price_nano > 0)
+  CHECK (price_units > 0 OR price_nano > 0),
+  CHECK ((side = 'buy'  AND proposal_id IS NOT NULL AND position_id IS NULL)
+      OR (side = 'sell' AND proposal_id IS NULL     AND position_id IS NOT NULL))
 );
--- long-only / no-shorts enforced in the risk engine (sell <= held qty); never stored as a short.
+-- BUY entry orders must point at a confirmed proposal whose signal is selected.
+-- SELL protective exits must point at an open same-account/same-instrument position and lots <= held qty.
+-- These are schema triggers in the MVP DDL; execution code still re-checks at submit/reconcile.
 
 CREATE TABLE fills (
   id               INTEGER PRIMARY KEY,
@@ -299,6 +308,71 @@ CREATE TRIGGER audit_journal_no_update BEFORE UPDATE ON audit_journal
 CREATE TRIGGER audit_journal_no_delete BEFORE DELETE ON audit_journal
   BEGIN SELECT RAISE(ABORT, 'audit_journal is append-only'); END;
 
+CREATE TRIGGER proposals_selected_signal_only BEFORE INSERT ON proposals
+  WHEN (SELECT decision FROM signals WHERE id = NEW.signal_id) IS NOT 'selected'
+  BEGIN SELECT RAISE(ABORT, 'proposals may reference only selected signals'); END;
+CREATE TRIGGER proposals_selected_signal_only_update BEFORE UPDATE OF signal_id ON proposals
+  WHEN (SELECT decision FROM signals WHERE id = NEW.signal_id) IS NOT 'selected'
+  BEGIN SELECT RAISE(ABORT, 'proposals may reference only selected signals'); END;
+CREATE TRIGGER proposals_signal_locked_after_buy_order BEFORE UPDATE OF signal_id ON proposals
+  WHEN EXISTS (SELECT 1 FROM orders o WHERE o.proposal_id = OLD.proposal_id AND o.side = 'buy')
+  BEGIN SELECT RAISE(ABORT, 'proposal signal is locked after a buy order exists'); END;
+CREATE TRIGGER proposals_state_locked_after_buy_order BEFORE UPDATE OF state ON proposals
+  WHEN NEW.state <> 'confirmed'
+   AND EXISTS (SELECT 1 FROM orders o WHERE o.proposal_id = OLD.proposal_id AND o.side = 'buy')
+  BEGIN SELECT RAISE(ABORT, 'confirmed proposal is locked after a buy order exists'); END;
+CREATE TRIGGER signals_decision_locked_after_buy_order BEFORE UPDATE OF decision ON signals
+  WHEN NEW.decision <> 'selected'
+   AND EXISTS (
+    SELECT 1 FROM proposals p JOIN orders o ON o.proposal_id = p.proposal_id
+    WHERE p.signal_id = OLD.id AND o.side = 'buy'
+   )
+  BEGIN SELECT RAISE(ABORT, 'selected signal is locked after a buy order exists'); END;
+CREATE TRIGGER signals_instrument_locked_after_buy_order BEFORE UPDATE OF instrument_uid ON signals
+  WHEN NEW.instrument_uid <> OLD.instrument_uid
+   AND EXISTS (
+    SELECT 1 FROM proposals p JOIN orders o ON o.proposal_id = p.proposal_id
+    WHERE p.signal_id = OLD.id AND o.side = 'buy'
+   )
+  BEGIN SELECT RAISE(ABORT, 'signal instrument is locked after a buy order exists'); END;
+
+CREATE TRIGGER orders_buy_requires_confirmed_selected_proposal BEFORE INSERT ON orders
+  WHEN NEW.side = 'buy' AND NOT EXISTS (
+    SELECT 1 FROM proposals p JOIN signals s ON s.id = p.signal_id
+    WHERE p.proposal_id = NEW.proposal_id AND p.state = 'confirmed'
+      AND s.decision = 'selected' AND s.instrument_uid = NEW.instrument_uid
+  )
+  BEGIN SELECT RAISE(ABORT, 'buy orders require a confirmed selected proposal'); END;
+CREATE TRIGGER orders_buy_requires_confirmed_selected_proposal_update
+  BEFORE UPDATE OF side, proposal_id, instrument_uid ON orders
+  WHEN NEW.side = 'buy' AND NOT EXISTS (
+    SELECT 1 FROM proposals p JOIN signals s ON s.id = p.signal_id
+    WHERE p.proposal_id = NEW.proposal_id AND p.state = 'confirmed'
+      AND s.decision = 'selected' AND s.instrument_uid = NEW.instrument_uid
+  )
+  BEGIN SELECT RAISE(ABORT, 'buy orders require a confirmed selected proposal'); END;
+CREATE TRIGGER orders_sell_requires_open_matching_position BEFORE INSERT ON orders
+  WHEN NEW.side = 'sell' AND NOT EXISTS (
+    SELECT 1 FROM positions p
+    WHERE p.id = NEW.position_id
+      AND p.state = 'open'
+      AND p.instrument_uid = NEW.instrument_uid
+      AND p.account_id = NEW.account_id
+      AND p.qty >= NEW.lots
+  )
+  BEGIN SELECT RAISE(ABORT, 'sell orders require an open matching position'); END;
+CREATE TRIGGER orders_sell_requires_open_matching_position_update
+  BEFORE UPDATE OF side, position_id, instrument_uid, account_id, lots ON orders
+  WHEN NEW.side = 'sell' AND NOT EXISTS (
+    SELECT 1 FROM positions p
+    WHERE p.id = NEW.position_id
+      AND p.state = 'open'
+      AND p.instrument_uid = NEW.instrument_uid
+      AND p.account_id = NEW.account_id
+      AND p.qty >= NEW.lots
+  )
+  BEGIN SELECT RAISE(ABORT, 'sell orders require an open matching position'); END;
+
 -- 3.4 Indexes (query paths) ------------------------------------------------
 CREATE INDEX idx_candles_uid_ts        ON candles(instrument_uid, ts);
 CREATE INDEX idx_signals_ts            ON signals(ts);
@@ -312,7 +386,7 @@ CREATE INDEX idx_audit_ts              ON audit_journal(ts);
 CREATE INDEX idx_cash_events_ts        ON cash_events(ts);
 ```
 
-## 4. Invariants encoded by the schema
+## 4. Schema, Producer, And Read-Path Invariants
 - **Schema version fail-closed** — existing SQLite DBs with core tables must carry the current
   `PRAGMA user_version`; bootstrap rejects unversioned/stale schemas instead of using old CHECK constraints.
 - **Frozen skip reasons** — `signals.reason` is NULL unless `decision='skipped'`; skipped rows must use one of
@@ -320,16 +394,22 @@ CREATE INDEX idx_cash_events_ts        ON cash_events(ts);
 - **No impossible prices** — price/market-data/commission/dividend/tick quote pairs reject negative values
   and reject zero where a present price-like value must exist.
 - **No float money** — every monetary value is a `units`/`nano` integer pair.
-- **No-lookahead** — `candles.is_complete=1` only once the bar reflects the **final** close per
+- **Producer no-lookahead obligation** — `candles.is_complete=1` only once the bar reflects the **final** close per
   `config.close_definition=auction_close` (owner-ratified 2026-06-29): the auction close from
-  `GetClosePrices`/`OrderBook.close_price`, captured at/after 18:50 (19:00 from 2026-03-23). The data layer
-  asserts the close source matches `close_definition` before setting `is_complete=1`; the signal `ts` is that
-  final closed D1. The `d1_candle_after_evening` enum value is retained only for a future owner-approved change.
-- **Idempotency** — `orders.order_id` is the client key and the PK (a retry/restart cannot create a duplicate).
+  `GetClosePrices`/`OrderBook.close_price`, captured at/after 18:50 (19:00 from 2026-03-23). Ingestion code must
+  assert the close source matches `close_definition` before setting `is_complete=1`; the signal `ts` is that final
+  closed D1. The `d1_candle_after_evening` enum value is retained only for a future owner-approved change.
+- **Idempotency** — `orders.order_id` is the non-empty client key and the PK (a retry/restart cannot create a duplicate).
+- **Confirm-first entry** — proposals can reference only `signals.decision='selected'`; buy orders must
+  reference a `confirmed` proposal whose signal is still selected and targets the same instrument.
+- **Long-only exits** — sell orders must reference an open same-account/same-instrument position and cannot
+  request more lots than held.
 - **Managed registry** — `whitelist_status` CHECK exactly matches the frozen vocabulary; indices carry NULL.
 - **Limit-only** — `orders.type` CHECK admits only `LIMIT`; market/bestprice can't be persisted.
 - **Audit trail** — `audit_journal` is append-only (triggers) and FK-links proposal→order→position.
-- **Data truth** — `data_status` + `data_conflicts` record divergence; the risk engine skips **entry** (never an exit) when `data_status='data_conflict'`.
+- **Data truth** — `data_status` is the current registry marker, while `data_conflicts.as_of/resolved_as_of`
+  is the historical decision-time entry gate. The risk engine skips **entry** (never an exit) while a conflict
+  was unresolved as of the decision timestamp.
 - **State-machine parity** — `orders.state` / `positions.state` / `proposals.state` enums match TZ §8;
   `control_state.mode` persists `paused`/`killed`/`blocked_reconciliation_mismatch` so they survive a restart (TZ §7-§8).
 - **Account guard (row-level)** — `orders.account_id` and `cash_events.account_id` (NOT NULL) and

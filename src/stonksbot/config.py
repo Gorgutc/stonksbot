@@ -5,8 +5,10 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from stonksbot.data.store import build_universe_status_map
 
 
 class ConfigError(ValueError):
@@ -34,6 +36,17 @@ class UniverseSettings(BaseModel):
     managed_only: list[str] = Field(default_factory=list)
     blocked: list[str] = Field(default_factory=list)
     pending: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def tickers_have_one_status(self) -> "UniverseSettings":
+        build_universe_status_map(
+            approved=self.approved,
+            watch_only=self.watch_only,
+            managed_only=self.managed_only,
+            blocked=self.blocked,
+            pending=self.pending,
+        )
+        return self
 
 
 class EligibilitySettings(BaseModel):
@@ -237,6 +250,24 @@ def _validate_startup(settings: StonksbotSettings) -> None:
         raise ConfigError("TINVEST_TOKEN_SANDBOX is required for sandbox mode")
     if settings.mode == "confirm" and not settings.secrets.tinvest_token_live_confirm:
         raise ConfigError("TINVEST_TOKEN_LIVE_CONFIRM is required for confirm mode")
+    _validate_frozen_pilot_risk(settings.risk)
+
+
+def _validate_frozen_pilot_risk(risk: RiskSettings) -> None:
+    if risk.capital_rub > 10_000:
+        raise ConfigError("capital_rub must not exceed frozen pilot limit 10000")
+    if risk.max_open_positions > 1:
+        raise ConfigError("max_open_positions must not exceed frozen pilot limit 1")
+    if risk.max_position_rub > 3_000:
+        raise ConfigError("max_position_rub must not exceed frozen pilot limit 3000")
+    if risk.max_position_pct > 30:
+        raise ConfigError("max_position_pct must not exceed frozen pilot limit 30")
+    if risk.cash_reserve_pct < 50:
+        raise ConfigError("cash_reserve_pct must be at least frozen pilot floor 50")
+    if risk.daily_hard_stop_rub > 100:
+        raise ConfigError("daily_hard_stop_rub must not exceed frozen pilot limit 100")
+    if risk.max_proposals_per_day > 1:
+        raise ConfigError("max_proposals_per_day must not exceed frozen pilot limit 1")
 
 
 def _hhmm_to_minutes(value: str) -> int:

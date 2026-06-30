@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class SchemaError(RuntimeError):
@@ -119,7 +119,12 @@ CREATE TABLE IF NOT EXISTS data_conflicts (
   kind TEXT NOT NULL CHECK (kind IN ('close_divergence','missing_bar','duplicate_bar')),
   detail TEXT,
   resolved INTEGER NOT NULL DEFAULT 0 CHECK (resolved IN (0,1)),
-  as_of INTEGER NOT NULL
+  resolved_as_of INTEGER,
+  as_of INTEGER NOT NULL,
+  CHECK (
+    (resolved = 0 AND resolved_as_of IS NULL)
+    OR (resolved = 1 AND resolved_as_of IS NOT NULL AND resolved_as_of >= as_of)
+  )
 );
 
 CREATE TABLE IF NOT EXISTS signals (
@@ -154,8 +159,9 @@ CREATE TABLE IF NOT EXISTS proposals (
 );
 
 CREATE TABLE IF NOT EXISTS orders (
-  order_id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL PRIMARY KEY CHECK (length(trim(order_id)) > 0),
   proposal_id TEXT REFERENCES proposals(proposal_id),
+  position_id INTEGER REFERENCES positions(id),
   instrument_uid TEXT NOT NULL REFERENCES instrument_reference(instrument_uid),
   account_id TEXT NOT NULL,
   side TEXT NOT NULL CHECK (side IN ('buy','sell')),
@@ -170,7 +176,11 @@ CREATE TABLE IF NOT EXISTS orders (
   attempts INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  CHECK (price_units > 0 OR price_nano > 0)
+  CHECK (price_units > 0 OR price_nano > 0),
+  CHECK (
+    (side = 'buy' AND proposal_id IS NOT NULL AND position_id IS NULL)
+    OR (side = 'sell' AND proposal_id IS NULL AND position_id IS NOT NULL)
+  )
 );
 
 CREATE TABLE IF NOT EXISTS fills (
@@ -263,6 +273,112 @@ CREATE TRIGGER IF NOT EXISTS audit_journal_no_update BEFORE UPDATE ON audit_jour
 
 CREATE TRIGGER IF NOT EXISTS audit_journal_no_delete BEFORE DELETE ON audit_journal
   BEGIN SELECT RAISE(ABORT, 'audit_journal is append-only'); END;
+
+CREATE TRIGGER IF NOT EXISTS proposals_selected_signal_only BEFORE INSERT ON proposals
+  WHEN (SELECT decision FROM signals WHERE id = NEW.signal_id) IS NOT 'selected'
+  BEGIN SELECT RAISE(ABORT, 'proposals may reference only selected signals'); END;
+
+CREATE TRIGGER IF NOT EXISTS proposals_selected_signal_only_update
+  BEFORE UPDATE OF signal_id ON proposals
+  WHEN (SELECT decision FROM signals WHERE id = NEW.signal_id) IS NOT 'selected'
+  BEGIN SELECT RAISE(ABORT, 'proposals may reference only selected signals'); END;
+
+CREATE TRIGGER IF NOT EXISTS proposals_signal_locked_after_buy_order
+  BEFORE UPDATE OF signal_id ON proposals
+  WHEN EXISTS (
+    SELECT 1
+    FROM orders o
+    WHERE o.proposal_id = OLD.proposal_id
+      AND o.side = 'buy'
+  )
+  BEGIN SELECT RAISE(ABORT, 'proposal signal is locked after a buy order exists'); END;
+
+CREATE TRIGGER IF NOT EXISTS proposals_state_locked_after_buy_order
+  BEFORE UPDATE OF state ON proposals
+  WHEN NEW.state <> 'confirmed'
+   AND EXISTS (
+    SELECT 1
+    FROM orders o
+    WHERE o.proposal_id = OLD.proposal_id
+      AND o.side = 'buy'
+  )
+  BEGIN SELECT RAISE(ABORT, 'confirmed proposal is locked after a buy order exists'); END;
+
+CREATE TRIGGER IF NOT EXISTS signals_decision_locked_after_buy_order
+  BEFORE UPDATE OF decision ON signals
+  WHEN NEW.decision <> 'selected'
+   AND EXISTS (
+    SELECT 1
+    FROM proposals p
+    JOIN orders o ON o.proposal_id = p.proposal_id
+    WHERE p.signal_id = OLD.id
+      AND o.side = 'buy'
+  )
+  BEGIN SELECT RAISE(ABORT, 'selected signal is locked after a buy order exists'); END;
+
+CREATE TRIGGER IF NOT EXISTS signals_instrument_locked_after_buy_order
+  BEFORE UPDATE OF instrument_uid ON signals
+  WHEN NEW.instrument_uid <> OLD.instrument_uid
+   AND EXISTS (
+    SELECT 1
+    FROM proposals p
+    JOIN orders o ON o.proposal_id = p.proposal_id
+    WHERE p.signal_id = OLD.id
+      AND o.side = 'buy'
+  )
+  BEGIN SELECT RAISE(ABORT, 'signal instrument is locked after a buy order exists'); END;
+
+CREATE TRIGGER IF NOT EXISTS orders_buy_requires_confirmed_selected_proposal
+  BEFORE INSERT ON orders
+  WHEN NEW.side = 'buy' AND NOT EXISTS (
+    SELECT 1
+    FROM proposals p
+    JOIN signals s ON s.id = p.signal_id
+    WHERE p.proposal_id = NEW.proposal_id
+      AND p.state = 'confirmed'
+      AND s.decision = 'selected'
+      AND s.instrument_uid = NEW.instrument_uid
+  )
+  BEGIN SELECT RAISE(ABORT, 'buy orders require a confirmed selected proposal'); END;
+
+CREATE TRIGGER IF NOT EXISTS orders_buy_requires_confirmed_selected_proposal_update
+  BEFORE UPDATE OF side, proposal_id, instrument_uid ON orders
+  WHEN NEW.side = 'buy' AND NOT EXISTS (
+    SELECT 1
+    FROM proposals p
+    JOIN signals s ON s.id = p.signal_id
+    WHERE p.proposal_id = NEW.proposal_id
+      AND p.state = 'confirmed'
+      AND s.decision = 'selected'
+      AND s.instrument_uid = NEW.instrument_uid
+  )
+  BEGIN SELECT RAISE(ABORT, 'buy orders require a confirmed selected proposal'); END;
+
+CREATE TRIGGER IF NOT EXISTS orders_sell_requires_open_matching_position
+  BEFORE INSERT ON orders
+  WHEN NEW.side = 'sell' AND NOT EXISTS (
+    SELECT 1
+    FROM positions p
+    WHERE p.id = NEW.position_id
+      AND p.state = 'open'
+      AND p.instrument_uid = NEW.instrument_uid
+      AND p.account_id = NEW.account_id
+      AND p.qty >= NEW.lots
+  )
+  BEGIN SELECT RAISE(ABORT, 'sell orders require an open matching position'); END;
+
+CREATE TRIGGER IF NOT EXISTS orders_sell_requires_open_matching_position_update
+  BEFORE UPDATE OF side, position_id, instrument_uid, account_id, lots ON orders
+  WHEN NEW.side = 'sell' AND NOT EXISTS (
+    SELECT 1
+    FROM positions p
+    WHERE p.id = NEW.position_id
+      AND p.state = 'open'
+      AND p.instrument_uid = NEW.instrument_uid
+      AND p.account_id = NEW.account_id
+      AND p.qty >= NEW.lots
+  )
+  BEGIN SELECT RAISE(ABORT, 'sell orders require an open matching position'); END;
 
 CREATE INDEX IF NOT EXISTS idx_candles_uid_ts ON candles(instrument_uid, ts);
 CREATE INDEX IF NOT EXISTS idx_signals_ts ON signals(ts);

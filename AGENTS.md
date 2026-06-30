@@ -183,16 +183,19 @@ ruff check . && pytest -q                             # project verify.fast
   proposes an entry, the human confirms in Telegram; protective exits are
   automated). Codex/Claude BUILD, review, and document — **never** decide buy/sell.
 - **Status:** M0 COMPLETE. M0 closed in PR #7 (`main@14dadb4`); current main after
-  PR #9 M1 schema/ISS data merge is `549eb68`. Owner decision on
+  PR #10 M1 ISS pagination/status sync is `7b9c4e1`. Owner decision on
   2026-06-29 activated only the `research-backtest` profile after `main@ca0c04e` /
   PR #5 completed readiness; PR #6 landed the Python research/backtest package,
   config loader, SQLite DDL, account-guard stub, and ruff/pytest verification;
   PR #7 wired CI (`.github/workflows/ci.yml`, verify + harness gates on PR/main);
-  PR #9 landed M1.1 schema hardening plus the first read-only MOEX ISS data leg.
+  PR #9 landed M1.1 schema hardening plus the first read-only MOEX ISS data leg;
+  PR #10 fixed ISS pagination/cursor fail-closed behavior and `signals.reason` checks.
   M0 is done; M1 remains in progress.
   `broker-adapter` and `execution-confirm` remain **dormant** — introduce no broker order placement, Telegram execution,
-  live/sandbox trading dependency, or build command for those profiles without an
-  explicit activation request (see `component-guardian` + `docs/profiles/`). The
+  live/sandbox trading dependency, full-access/live token handling, or build command for those profiles without an
+  explicit activation request (see `component-guardian` + `docs/profiles/`). Active
+  M1 may later add read-only T-Invest market-data access only under the secrets/token
+  policy and without order capability. The
   Second Brain vault is the cross-session memory: read
   `1-Projects/stonksbot/_INDEX.md` → `Conventions.md` 🔒 → latest session before
   substantial work (the repo's machine-local `CLAUDE.local.md` points there).
@@ -209,7 +212,7 @@ ruff check . && pytest -q                             # project verify.fast
   entry next session, no intraday lookahead**; conservative backtest fills + costs
   both sides; startup reconciliation; `kill` stops the bot + cancels orders but
   **never sells positions**.
-- **Verification:** project-code verify is now Python M0: `.agent-kit.json`
+- **Verification:** project-code verify covers the Python M0/M1 surface: `.agent-kit.json`
   `verify.fast = "ruff check . && pytest -q"`, `verify.deep = "pytest"`, and
   `verify.ship = "pytest --maxfail=1 -q"`. Harness/gate checks still exist
   (`check-kit`, `test-gates`, `secret-scan`, `evidence-gate`). Any change to a

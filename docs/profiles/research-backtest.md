@@ -34,7 +34,7 @@ trading at all* — it must exist and pass before any live profile is activated.
   `execution-confirm` profiles.
 
 ## Active toolchain
-Current M0: Python 3.12+, pydantic-settings, pytest, ruff. `.agent-kit.json`
+Current M0/M1 baseline: Python 3.12+, pydantic-settings, pytest, ruff. `.agent-kit.json`
 now sets `verify.fast = "ruff check . && pytest -q"`, `verify.deep = "pytest"`,
 and `verify.ship = "pytest --maxfail=1 -q"`. Add research-only dependencies such
 as pandas/numpy/hypothesis only when the data/backtest code needs them.

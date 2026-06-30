@@ -19,8 +19,9 @@ share one canonical rule set. The full rules are imported below from `AGENTS.md`
 - **Hooks** in `.claude/settings.json` reuse the shared Node scripts in
   `.codex/hooks/` — the same scripts Codex registers in `.codex/hooks.json`. Both
   harnesses get the same session context, prompt nudge, and post-edit
-  verification. The post-edit hook is path-scoped (via `.agent-kit.json`
-  `verifyPaths`) and blocks (exit 2) on failure. Separately, the git
+  verification. The post-edit hook supports optional path scoping via
+  `.agent-kit.json` `verifyPaths`; this checkout leaves `verifyPaths` empty, so
+  it verifies broadly after edits and blocks (exit 2) on failure. Separately, the git
   **pre-commit/pre-push gates** (`tools/install-hooks.mjs`) are installed and live
   in this checkout — linked worktrees should verify hooks or use a shared hooksPath.
 - This kit keeps `.codex/` and `.claude/` **independent** (hand-authored). Run
