@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -26,6 +27,8 @@ def test_build_candles_url_uses_daily_index_endpoint() -> None:
     assert "interval=24" in url
     assert "from=2026-06-01" in url
     assert "till=2026-06-30" in url
+    assert "start=0" in url
+    assert "limit=500" in url
 
 
 def test_loads_iss_json_preserves_decimal_values() -> None:
@@ -112,6 +115,10 @@ def test_fetch_daily_candles_uses_injected_reader_without_tokens() -> None:
           "candles": {
             "columns": ["begin", "open", "high", "low", "close", "volume"],
             "data": [["2026-06-27", 3210.12, 3220.50, 3201.01, 3215.99, 10]]
+          },
+          "candles.cursor": {
+            "columns": ["INDEX", "TOTAL", "PAGESIZE"],
+            "data": [[0, 1, 500]]
           }
         }
         """
@@ -128,3 +135,120 @@ def test_fetch_daily_candles_uses_injected_reader_without_tokens() -> None:
     assert captured_urls
     assert "token" not in captured_urls[0].lower()
     assert candles[0].source == "moex_iss"
+
+
+def test_fetch_daily_candles_rejects_non_empty_payload_without_cursor() -> None:
+    def read_text(_: str) -> str:
+        return """
+        {
+          "candles": {
+            "columns": ["begin", "open", "high", "low", "close", "volume"],
+            "data": [["2026-06-27", 3210.12, 3220.50, 3201.01, 3215.99, 10]]
+          }
+        }
+        """
+
+    with pytest.raises(ValueError, match="missing candles.cursor"):
+        fetch_daily_candles(
+            "IMOEX",
+            market="index",
+            from_date=date(2026, 6, 1),
+            till_date=date(2026, 6, 30),
+            read_text=read_text,
+        )
+
+
+def test_fetch_daily_candles_follows_iss_cursor_until_total() -> None:
+    captured_starts: list[str] = []
+
+    def read_text(url: str) -> str:
+        query = parse_qs(urlparse(url).query)
+        start = query["start"][0]
+        captured_starts.append(start)
+        if start == "0":
+            return """
+            {
+              "candles": {
+                "columns": ["begin", "open", "high", "low", "close", "volume"],
+                "data": [
+                  ["2026-06-25", 100, 101, 99, 100, 10],
+                  ["2026-06-26", 101, 102, 100, 101, 11]
+                ]
+              },
+              "candles.cursor": {
+                "columns": ["INDEX", "TOTAL", "PAGESIZE"],
+                "data": [[0, 3, 2]]
+              }
+            }
+            """
+        if start == "2":
+            return """
+            {
+              "candles": {
+                "columns": ["begin", "open", "high", "low", "close", "volume"],
+                "data": [["2026-06-27", 102, 103, 101, 102, 12]]
+              },
+              "candles.cursor": {
+                "columns": ["INDEX", "TOTAL", "PAGESIZE"],
+                "data": [[2, 3, 2]]
+              }
+            }
+            """
+        raise AssertionError(f"unexpected ISS start offset: {start}")
+
+    candles = fetch_daily_candles(
+        "IMOEX",
+        market="index",
+        from_date=date(2026, 6, 1),
+        till_date=date(2026, 6, 30),
+        read_text=read_text,
+    )
+
+    assert captured_starts == ["0", "2"]
+    assert [candle.ts for candle in candles] == [
+        int(datetime(2026, 6, 25, tzinfo=UTC).timestamp() * 1000),
+        int(datetime(2026, 6, 26, tzinfo=UTC).timestamp() * 1000),
+        int(datetime(2026, 6, 27, tzinfo=UTC).timestamp() * 1000),
+    ]
+
+
+def test_fetch_daily_candles_rejects_short_page_before_cursor_total() -> None:
+    def read_text(url: str) -> str:
+        query = parse_qs(urlparse(url).query)
+        assert query["start"] == ["0"]
+        return """
+        {
+          "candles": {
+            "columns": ["begin", "open", "high", "low", "close", "volume"],
+            "data": [["2026-06-25", 100, 101, 99, 100, 10]]
+          },
+          "candles.cursor": {
+            "columns": ["INDEX", "TOTAL", "PAGESIZE"],
+            "data": [[0, 3, 2]]
+          }
+        }
+        """
+
+    with pytest.raises(ValueError, match="short page"):
+        fetch_daily_candles(
+            "IMOEX",
+            market="index",
+            from_date=date(2026, 6, 1),
+            till_date=date(2026, 6, 30),
+            read_text=read_text,
+        )
+
+
+def test_parse_candles_rejects_duplicate_begin_values() -> None:
+    payload = {
+        "candles": {
+            "columns": ["begin", "open", "high", "low", "close", "volume"],
+            "data": [
+                ["2026-06-27", Decimal("100"), Decimal("101"), Decimal("99"), Decimal("100"), 10],
+                ["2026-06-27", Decimal("101"), Decimal("102"), Decimal("100"), Decimal("101"), 11],
+            ],
+        }
+    }
+
+    with pytest.raises(ValueError, match="duplicate"):
+        parse_candles(payload, secid="IMOEX", market="index")

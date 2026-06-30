@@ -161,7 +161,7 @@ node tools/check-kit.mjs                              # harness integrity / pari
 node tools/test-gates.mjs                             # regression tests for gate scripts
 node tools/codex-orchestrator/fanout.mjs --doctor     # orchestrator prerequisites
 node tools/evidence-gate.mjs                          # fail-closed evidence gate (if configured)
-node tools/install-hooks.mjs                          # git pre-commit/pre-push gates (installed & live: run on every commit/push; worktrees inherit .git/hooks)
+node tools/install-hooks.mjs                          # git pre-commit/pre-push gates (installed & live in this checkout; linked worktrees should verify hooks or shared hooksPath)
 ruff check . && pytest -q                             # project verify.fast
 ```
 
@@ -183,12 +183,13 @@ ruff check . && pytest -q                             # project verify.fast
   proposes an entry, the human confirms in Telegram; protective exits are
   automated). Codex/Claude BUILD, review, and document — **never** decide buy/sell.
 - **Status:** M0 COMPLETE. M0 closed in PR #7 (`main@14dadb4`); current main after
-  PR #8 status/vault sync is `9e5fcff`. Owner decision on
+  PR #9 M1 schema/ISS data merge is `549eb68`. Owner decision on
   2026-06-29 activated only the `research-backtest` profile after `main@ca0c04e` /
   PR #5 completed readiness; PR #6 landed the Python research/backtest package,
   config loader, SQLite DDL, account-guard stub, and ruff/pytest verification;
-  PR #7 wired CI (`.github/workflows/ci.yml`, verify + harness gates on PR/main).
-  M0 is done; M1.1 currently starts the data layer with a read-only MOEX ISS leg.
+  PR #7 wired CI (`.github/workflows/ci.yml`, verify + harness gates on PR/main);
+  PR #9 landed M1.1 schema hardening plus the first read-only MOEX ISS data leg.
+  M0 is done; M1 remains in progress.
   `broker-adapter` and `execution-confirm` remain **dormant** — introduce no broker order placement, Telegram execution,
   live/sandbox trading dependency, or build command for those profiles without an
   explicit activation request (see `component-guardian` + `docs/profiles/`). The

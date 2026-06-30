@@ -6,16 +6,16 @@
 > profile it activates (`dormant → active` when the milestone starts).
 
 ## Current state (2026-06-30)
-- **Phase:** **M0 complete** — CI shipped in PR #7 (merged `main@14dadb4`);
-  PR #8 then synced status/vault wording, so current main is `9e5fcff`. Verify + harness gates run on PR/main.
+- **Phase:** **M0 complete; M1 in progress** — CI shipped in PR #7 (merged `main@14dadb4`);
+  PR #9 landed M1.1 schema/ISS data work, so current main is `549eb68`. Verify + harness gates run on PR/main.
 - **Done:** agent harness (`check-kit` currently reports 53 checks / 0 failed), Second Brain folder, frozen invariants, comprehensive TZ
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
-  Merged to `main` (latest verified `9e5fcff` after PR #8; PR #7 closed M0 with CI,
+  Merged to `main` (latest verified `549eb68` after PR #9; PR #7 closed M0 with CI,
   PR #6 shipped the M0 skeleton, PR #5 the pre-M0 readiness layer).
 - **Initial M0 code shipped** — `research-backtest` is active; `broker-adapter` and
   `execution-confirm` remain dormant. The shipped M0 scope is config, schema, account-guard stub,
   and ruff/pytest verification only.
-- **M1.1 started (2026-06-30):** schema hardening now rejects negative/impossible quote pairs;
+- **M1.1 landed (2026-06-30, PR #9):** schema hardening rejects negative/impossible quote pairs;
   the first data-leg slice is MOEX ISS read-only candles with injected reader, no SDK/token/order path.
 - **Pre-M0 contract layer RESOLVED (2026-06-27 #3):** TZ §4.1/§5.1/§12.1 → `docs/contracts/`
   (config-and-secrets, db-schema, tax-and-dividends); `[verify]` gaps closed by research (index = MOEX ISS,

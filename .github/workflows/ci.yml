@@ -1,7 +1,7 @@
 name: CI
 
-# M0 verify + harness gates. Mirrors the local pre-commit/pre-push gates
-# (tools/git-gate.mjs) so a green CI == a clean local push:
+# M0 verify + harness gates. Comparable to the local pre-commit/pre-push gates
+# (tools/git-gate.mjs), with CI-owned gate regression coverage:
 #   ruff check .  |  pytest  |  check-kit  |  test-gates  |  secret-scan --all  |  evidence-gate
 # Runs on PRs (feature branches) and on push to main (post-merge); no duplicate runs.
 
