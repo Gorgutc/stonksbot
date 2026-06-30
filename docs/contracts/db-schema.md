@@ -47,7 +47,7 @@
 
 ```sql
 PRAGMA foreign_keys = ON;
--- bootstrap sets PRAGMA user_version = 3 after creating the current schema and
+-- bootstrap sets PRAGMA user_version = 4 after creating the current schema and
 -- rejects existing core tables with any other user_version instead of silently
 -- running against stale CHECK constraints.
 
@@ -384,11 +384,20 @@ CREATE INDEX idx_positions_uid         ON positions(instrument_uid);
 CREATE INDEX idx_dividends_uid_lastbuy ON dividends(instrument_uid, last_buy_date);
 CREATE INDEX idx_audit_ts              ON audit_journal(ts);
 CREATE INDEX idx_cash_events_ts        ON cash_events(ts);
+
+-- At most one OPEN conflict per (instrument_uid, ts, kind): re-detection is idempotent
+-- (no duplicate open rows / skip signals); a resolved row leaves the partial index so a
+-- later recurrence opens a fresh row instead of reusing the closed one.
+CREATE UNIQUE INDEX idx_data_conflicts_open_unique
+  ON data_conflicts(instrument_uid, ts, kind) WHERE resolved = 0;
 ```
 
 ## 4. Schema, Producer, And Read-Path Invariants
 - **Schema version fail-closed** — existing SQLite DBs with core tables must carry the current
   `PRAGMA user_version`; bootstrap rejects unversioned/stale schemas instead of using old CHECK constraints.
+  There is no in-place auto-migration: a version bump (e.g. `3 → 4` when the open-conflict partial unique
+  index was added) makes any pre-existing store at the old version fail closed (`SchemaError`); recreate or
+  migrate it before bootstrap.
 - **Frozen skip reasons** — `signals.reason` is NULL unless `decision='skipped'`; skipped rows must use one of
   the six frozen eligibility/data codes. Non-canonical reason strings are rejected by SQLite, not normalized later.
 - **No impossible prices** — price/market-data/commission/dividend/tick quote pairs reject negative values
@@ -410,6 +419,11 @@ CREATE INDEX idx_cash_events_ts        ON cash_events(ts);
 - **Data truth** — `data_status` is the current registry marker, while `data_conflicts.as_of/resolved_as_of`
   is the historical decision-time entry gate. The risk engine skips **entry** (never an exit) while a conflict
   was unresolved as of the decision timestamp.
+- **Idempotent conflict detection** — a partial unique index keeps at most one **open** (`resolved=0`)
+  `data_conflicts` row per `(instrument_uid, ts, kind)`, so re-running detection neither stacks duplicate
+  conflict rows nor emits duplicate `data_conflict` skip signals; the recorded `as_of` keeps the earliest
+  detection (the conservative entry-block start). Resolving a conflict frees the key, so a genuine recurrence
+  opens a **new** row rather than reopening or overwriting the resolved one.
 - **State-machine parity** — `orders.state` / `positions.state` / `proposals.state` enums match TZ §8;
   `control_state.mode` persists `paused`/`killed`/`blocked_reconciliation_mismatch` so they survive a restart (TZ §7-§8).
 - **Account guard (row-level)** — `orders.account_id` and `cash_events.account_id` (NOT NULL) and

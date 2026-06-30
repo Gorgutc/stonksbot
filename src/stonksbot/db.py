@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class SchemaError(RuntimeError):
@@ -390,6 +390,13 @@ CREATE INDEX IF NOT EXISTS idx_positions_uid ON positions(instrument_uid);
 CREATE INDEX IF NOT EXISTS idx_dividends_uid_lastbuy ON dividends(instrument_uid, last_buy_date);
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_journal(ts);
 CREATE INDEX IF NOT EXISTS idx_cash_events_ts ON cash_events(ts);
+
+-- At most one OPEN (resolved = 0) conflict per (instrument_uid, ts, kind): re-detecting the
+-- same conflict is idempotent (no duplicate open rows / skip signals), while a resolved row is
+-- excluded from the index so a later recurrence opens a fresh row instead of reusing a closed one.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_data_conflicts_open_unique
+  ON data_conflicts(instrument_uid, ts, kind)
+  WHERE resolved = 0;
 """
 
 

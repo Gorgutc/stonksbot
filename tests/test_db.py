@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from stonksbot.db import SchemaError, bootstrap_database
+from stonksbot.db import SCHEMA_VERSION, SchemaError, bootstrap_database
 
 
 def _connection_with_share() -> sqlite3.Connection:
@@ -76,7 +76,7 @@ def test_bootstrap_creates_core_tables_and_guard_state() -> None:
     }.issubset(table_names)
     assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     assert connection.execute("SELECT id, updated_at FROM guard_state").fetchone() == (1, 123)
-    assert connection.execute("PRAGMA user_version").fetchone() == (3,)
+    assert connection.execute("PRAGMA user_version").fetchone() == (SCHEMA_VERSION,)
 
 
 def test_bootstrap_rejects_existing_unversioned_schema() -> None:
@@ -100,8 +100,24 @@ def test_bootstrap_accepts_current_schema_reentry() -> None:
     bootstrap_database(connection, now_ms=123)
     bootstrap_database(connection, now_ms=456)
 
-    assert connection.execute("PRAGMA user_version").fetchone() == (3,)
+    assert connection.execute("PRAGMA user_version").fetchone() == (SCHEMA_VERSION,)
     assert connection.execute("SELECT id, updated_at FROM guard_state").fetchone() == (1, 123)
+
+
+def test_bootstrap_rejects_prior_schema_version() -> None:
+    connection = sqlite3.connect(":memory:")
+    connection.executescript(
+        """
+        CREATE TABLE instrument_reference (instrument_uid TEXT PRIMARY KEY);
+        CREATE TABLE candles (id INTEGER PRIMARY KEY);
+        CREATE TABLE orders (id INTEGER PRIMARY KEY);
+        CREATE TABLE positions (id INTEGER PRIMARY KEY);
+        """
+    )
+    connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION - 1}")
+
+    with pytest.raises(SchemaError, match="unsupported SQLite schema version"):
+        bootstrap_database(connection, now_ms=0)
 
 
 def test_signals_reason_is_decision_aware_frozen_skip_code() -> None:

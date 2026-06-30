@@ -240,14 +240,31 @@ def record_data_conflict(
     detail: dict[str, object] | str | None,
     as_of: int,
 ) -> int:
-    cursor = connection.execute(
+    # Idempotent per OPEN (resolved = 0) conflict: re-detecting the same (instrument_uid, ts, kind)
+    # updates the existing open row (keeping the earliest as_of, the conservative entry-block start)
+    # instead of inserting a duplicate. A resolved row is excluded from the partial unique index, so a
+    # later recurrence opens a fresh row rather than reopening a closed one.
+    connection.execute(
         """
         INSERT INTO data_conflicts (instrument_uid, ts, kind, detail, as_of)
         VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (instrument_uid, ts, kind) WHERE resolved = 0
+        DO UPDATE SET as_of = min(data_conflicts.as_of, excluded.as_of)
         """,
         (instrument_uid, ts, kind, _serialize_detail(detail), as_of),
     )
-    return int(cursor.lastrowid)
+    open_conflict = connection.execute(
+        """
+        SELECT id
+        FROM data_conflicts
+        WHERE instrument_uid = ?
+          AND ts = ?
+          AND kind = ?
+          AND resolved = 0
+        """,
+        (instrument_uid, ts, kind),
+    ).fetchone()
+    return int(open_conflict[0])
 
 
 def resolve_data_conflict(connection: sqlite3.Connection, *, conflict_id: int, as_of: int) -> None:
@@ -316,14 +333,38 @@ def record_persistent_data_conflict(
         as_of=as_of,
     )
     set_instrument_data_status(connection, instrument_uid=instrument_uid, status="data_conflict")
-    cursor = connection.execute(
+    # Emit at most one skipped/data_conflict signal per decision bar (instrument_uid, ts): a
+    # re-detected conflict (or a second conflict kind on the same bar) must not stack duplicate
+    # skip signals for an entry decision that is already recorded as skipped.
+    connection.execute(
         """
         INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
-        VALUES (?, ?, 'skipped', 'data_conflict', ?)
+        SELECT ?, ?, 'skipped', 'data_conflict', ?
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM signals
+          WHERE instrument_uid = ?
+            AND ts = ?
+            AND decision = 'skipped'
+            AND reason = 'data_conflict'
+        )
         """,
-        (instrument_uid, ts, as_of),
+        (instrument_uid, ts, as_of, instrument_uid, ts),
     )
-    return conflict_id, int(cursor.lastrowid)
+    skip_signal = connection.execute(
+        """
+        SELECT id
+        FROM signals
+        WHERE instrument_uid = ?
+          AND ts = ?
+          AND decision = 'skipped'
+          AND reason = 'data_conflict'
+        ORDER BY id
+        LIMIT 1
+        """,
+        (instrument_uid, ts),
+    ).fetchone()
+    return conflict_id, int(skip_signal[0])
 
 
 def store_dividend_snapshot(
