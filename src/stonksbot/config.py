@@ -56,6 +56,51 @@ class EligibilitySettings(BaseModel):
     min_trading_days: int = 40
 
 
+def _enforce_frozen_pilot_band(risk: "RiskSettings") -> None:
+    """Enforce the frozen pilot risk band at model construction (LAW:
+    ``docs/frozen-decisions.md`` → "Portfolio limits (pilot)" + "Risk exits").
+
+    Both directions fail closed. A value above a frozen ceiling (or below a frozen
+    floor) RELAXES the safety contract; a non-positive cap or an impossible reserve
+    (> 100%) is a nonsensical sizing input. Because this runs from a ``RiskSettings``
+    ``model_validator``, no caller can bypass it via
+    ``load_settings(validate_startup=False)`` or by constructing
+    ``RiskSettings`` / ``StonksbotSettings`` directly. It raises ``ValueError`` so
+    pydantic surfaces it; ``load_settings`` re-wraps the ``ValidationError`` as
+    ``ConfigError``.
+    """
+    # Frozen ceilings / floor — must never be relaxed past the locked pilot band.
+    if risk.capital_rub > 10_000:
+        raise ValueError("capital_rub must not exceed frozen pilot limit 10000")
+    if risk.max_open_positions > 1:
+        raise ValueError("max_open_positions must not exceed frozen pilot limit 1")
+    if risk.max_position_rub > 3_000:
+        raise ValueError("max_position_rub must not exceed frozen pilot limit 3000")
+    if risk.max_position_pct > 30:
+        raise ValueError("max_position_pct must not exceed frozen pilot limit 30")
+    if risk.cash_reserve_pct < 50:
+        raise ValueError("cash_reserve_pct must be at least frozen pilot floor 50")
+    if risk.daily_hard_stop_rub > 100:
+        raise ValueError("daily_hard_stop_rub must not exceed frozen pilot limit 100")
+    if risk.max_proposals_per_day > 1:
+        raise ValueError("max_proposals_per_day must not exceed frozen pilot limit 1")
+    # Lower / sanity bounds — the frozen band is a band, not just a ceiling.
+    if risk.capital_rub <= 0:
+        raise ValueError("capital_rub must be a positive amount")
+    if risk.max_open_positions < 0:
+        raise ValueError("max_open_positions must not be negative")
+    if risk.max_position_rub <= 0:
+        raise ValueError("max_position_rub must be a positive amount")
+    if risk.max_position_pct <= 0:
+        raise ValueError("max_position_pct must be a positive percent")
+    if risk.cash_reserve_pct > 100:
+        raise ValueError("cash_reserve_pct must not exceed 100")
+    if risk.daily_hard_stop_rub <= 0:
+        raise ValueError("daily_hard_stop_rub must be a positive amount")
+    if risk.max_proposals_per_day < 0:
+        raise ValueError("max_proposals_per_day must not be negative")
+
+
 class RiskSettings(BaseModel):
     capital_rub: int = 10_000
     max_open_positions: int = 1
@@ -70,6 +115,11 @@ class RiskSettings(BaseModel):
     market_regime_index_ma: int = 50
     market_regime_5d_floor_pct: float = -5.0
     allowed_trading_status: str = "NORMAL_TRADING"
+
+    @model_validator(mode="after")
+    def enforce_frozen_pilot_band(self) -> "RiskSettings":
+        _enforce_frozen_pilot_band(self)
+        return self
 
 
 class StrategySettings(BaseModel):
@@ -250,24 +300,6 @@ def _validate_startup(settings: StonksbotSettings) -> None:
         raise ConfigError("TINVEST_TOKEN_SANDBOX is required for sandbox mode")
     if settings.mode == "confirm" and not settings.secrets.tinvest_token_live_confirm:
         raise ConfigError("TINVEST_TOKEN_LIVE_CONFIRM is required for confirm mode")
-    _validate_frozen_pilot_risk(settings.risk)
-
-
-def _validate_frozen_pilot_risk(risk: RiskSettings) -> None:
-    if risk.capital_rub > 10_000:
-        raise ConfigError("capital_rub must not exceed frozen pilot limit 10000")
-    if risk.max_open_positions > 1:
-        raise ConfigError("max_open_positions must not exceed frozen pilot limit 1")
-    if risk.max_position_rub > 3_000:
-        raise ConfigError("max_position_rub must not exceed frozen pilot limit 3000")
-    if risk.max_position_pct > 30:
-        raise ConfigError("max_position_pct must not exceed frozen pilot limit 30")
-    if risk.cash_reserve_pct < 50:
-        raise ConfigError("cash_reserve_pct must be at least frozen pilot floor 50")
-    if risk.daily_hard_stop_rub > 100:
-        raise ConfigError("daily_hard_stop_rub must not exceed frozen pilot limit 100")
-    if risk.max_proposals_per_day > 1:
-        raise ConfigError("max_proposals_per_day must not exceed frozen pilot limit 1")
 
 
 def _hhmm_to_minutes(value: str) -> int:

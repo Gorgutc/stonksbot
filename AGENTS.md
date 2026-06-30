@@ -183,14 +183,15 @@ ruff check . && pytest -q                             # project verify.fast
   proposes an entry, the human confirms in Telegram; protective exits are
   automated). Codex/Claude BUILD, review, and document — **never** decide buy/sell.
 - **Status:** M0 COMPLETE. M0 closed in PR #7 (`main@14dadb4`); current main after
-  PR #10 M1 ISS pagination/status sync is `7b9c4e1`. Owner decision on
+  PR #11 M1 data persistence read path is `9bb8eda`. Owner decision on
   2026-06-29 activated only the `research-backtest` profile after `main@ca0c04e` /
   PR #5 completed readiness; PR #6 landed the Python research/backtest package,
   config loader, SQLite DDL, account-guard stub, and ruff/pytest verification;
   PR #7 wired CI (`.github/workflows/ci.yml`, verify + harness gates on PR/main);
   PR #9 landed M1.1 schema hardening plus the first read-only MOEX ISS data leg;
-  PR #10 fixed ISS pagination/cursor fail-closed behavior and `signals.reason` checks.
-  M0 is done; M1 remains in progress.
+  PR #10 fixed ISS pagination/cursor fail-closed behavior and `signals.reason` checks;
+  PR #11 added the versioned data-store, latest-as-of read path, and `data_conflict`
+  gating at SQLite `SCHEMA_VERSION = 3`. M0 is done; M1 remains in progress.
   `broker-adapter` and `execution-confirm` remain **dormant** — introduce no broker order placement, Telegram execution,
   live/sandbox trading dependency, full-access/live token handling, or build command for those profiles without an
   explicit activation request (see `component-guardian` + `docs/profiles/`). Active
