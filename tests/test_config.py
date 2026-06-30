@@ -146,6 +146,37 @@ def test_daily_run_time_must_be_zero_padded_hhmm() -> None:
         load_settings(env={"STONKSBOT_DAILY_RUN_TIME": "9:05"})
 
 
+def test_universe_ticker_cannot_have_multiple_statuses(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+mode = "paper"
+[universe]
+approved = ["SBER"]
+watch_only = ["sber"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="multiple universe statuses"):
+        load_settings(config_path=config_path, env={})
+
+
+def test_startup_rejects_relaxed_frozen_pilot_risk_limits(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+mode = "paper"
+[risk]
+max_open_positions = 2
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="max_open_positions"):
+        load_settings(config_path=config_path, env={})
+
+
 def test_env_example_contains_only_placeholders() -> None:
     content = Path(".env.example").read_text(encoding="utf-8")
 

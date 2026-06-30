@@ -21,6 +21,40 @@ def _connection_with_share() -> sqlite3.Connection:
     return connection
 
 
+def _confirmed_proposal(connection: sqlite3.Connection, *, proposal_id: str = "proposal-ok") -> str:
+    selected_signal_id = connection.execute(
+        """
+        INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+        VALUES ('uid-sber', 1, 'selected', NULL, 1)
+        RETURNING id
+        """
+    ).fetchone()[0]
+    connection.execute(
+        """
+        INSERT INTO proposals (
+          proposal_id, signal_id, created_at, ttl_ms, telegram_user_id, state
+        )
+        VALUES (?, ?, 1, 60000, 1, 'confirmed')
+        """,
+        (proposal_id, selected_signal_id),
+    )
+    return proposal_id
+
+
+def _open_position(connection: sqlite3.Connection, *, qty: int = 2) -> int:
+    return connection.execute(
+        """
+        INSERT INTO positions (
+          instrument_uid, account_id, qty, avg_price_units, avg_price_nano,
+          opened_at, source, state
+        )
+        VALUES ('uid-sber', 'BOT-1', ?, 100, 0, 0, 'bot', 'open')
+        RETURNING id
+        """,
+        (qty,),
+    ).fetchone()[0]
+
+
 def test_bootstrap_creates_core_tables_and_guard_state() -> None:
     connection = sqlite3.connect(":memory:")
 
@@ -42,7 +76,7 @@ def test_bootstrap_creates_core_tables_and_guard_state() -> None:
     }.issubset(table_names)
     assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     assert connection.execute("SELECT id, updated_at FROM guard_state").fetchone() == (1, 123)
-    assert connection.execute("PRAGMA user_version").fetchone() == (2,)
+    assert connection.execute("PRAGMA user_version").fetchone() == (3,)
 
 
 def test_bootstrap_rejects_existing_unversioned_schema() -> None:
@@ -66,7 +100,7 @@ def test_bootstrap_accepts_current_schema_reentry() -> None:
     bootstrap_database(connection, now_ms=123)
     bootstrap_database(connection, now_ms=456)
 
-    assert connection.execute("PRAGMA user_version").fetchone() == (2,)
+    assert connection.execute("PRAGMA user_version").fetchone() == (3,)
     assert connection.execute("SELECT id, updated_at FROM guard_state").fetchone() == (1, 123)
 
 
@@ -122,26 +156,101 @@ def test_signals_reason_is_decision_aware_frozen_skip_code() -> None:
         )
 
 
+def test_proposals_can_reference_only_selected_signals() -> None:
+    connection = _connection_with_share()
+    selected_signal_id = connection.execute(
+        """
+        INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+        VALUES ('uid-sber', 1, 'selected', NULL, 1)
+        RETURNING id
+        """
+    ).fetchone()[0]
+    skipped_signal_id = connection.execute(
+        """
+        INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+        VALUES ('uid-sber', 2, 'skipped', 'data_conflict', 2)
+        RETURNING id
+        """
+    ).fetchone()[0]
+
+    connection.execute(
+        """
+        INSERT INTO proposals (
+          proposal_id, signal_id, created_at, ttl_ms, telegram_user_id, state
+        )
+        VALUES ('proposal-ok', ?, 1, 60000, 1, 'awaiting_confirmation')
+        """,
+        (selected_signal_id,),
+    )
+
+    with pytest.raises(sqlite3.DatabaseError, match="selected signals"):
+        connection.execute(
+            """
+            INSERT INTO proposals (
+              proposal_id, signal_id, created_at, ttl_ms, telegram_user_id, state
+            )
+            VALUES ('proposal-blocked', ?, 2, 60000, 1, 'awaiting_confirmation')
+            """,
+            (skipped_signal_id,),
+        )
+
+
+def test_proposal_signal_id_update_must_remain_selected() -> None:
+    connection = _connection_with_share()
+    selected_signal_id = connection.execute(
+        """
+        INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+        VALUES ('uid-sber', 1, 'selected', NULL, 1)
+        RETURNING id
+        """
+    ).fetchone()[0]
+    skipped_signal_id = connection.execute(
+        """
+        INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+        VALUES ('uid-sber', 2, 'skipped', 'data_conflict', 2)
+        RETURNING id
+        """
+    ).fetchone()[0]
+    connection.execute(
+        """
+        INSERT INTO proposals (
+          proposal_id, signal_id, created_at, ttl_ms, telegram_user_id, state
+        )
+        VALUES ('proposal-ok', ?, 1, 60000, 1, 'awaiting_confirmation')
+        """,
+        (selected_signal_id,),
+    )
+
+    with pytest.raises(sqlite3.DatabaseError, match="selected signals"):
+        connection.execute(
+            "UPDATE proposals SET signal_id = ? WHERE proposal_id = 'proposal-ok'",
+            (skipped_signal_id,),
+        )
+
+
 def test_orders_type_rejects_non_limit_orders() -> None:
     connection = _connection_with_share()
+    proposal_id = _confirmed_proposal(connection)
 
     with pytest.raises(sqlite3.IntegrityError):
         connection.execute(
             """
             INSERT INTO orders (
-              order_id, instrument_uid, account_id, side, type, price_units, price_nano,
+              order_id, proposal_id, instrument_uid, account_id, side, type, price_units, price_nano,
               lots, state, created_at, updated_at
             )
             VALUES (
-              'order-1', 'uid-sber', 'BOT-1', 'buy', 'MARKET', 100, 0,
+              'order-1', ?, 'uid-sber', 'BOT-1', 'buy', 'MARKET', 100, 0,
               1, 'submitted', 0, 0
             )
-            """
+            """,
+            (proposal_id,),
         )
 
 
 def test_orders_reject_negative_or_split_sign_limit_prices() -> None:
     connection = _connection_with_share()
+    proposal_id = _confirmed_proposal(connection)
 
     for order_id, price_units, price_nano in [
         ("negative-units", -1, 0),
@@ -152,13 +261,222 @@ def test_orders_reject_negative_or_split_sign_limit_prices() -> None:
             connection.execute(
                 """
                 INSERT INTO orders (
-                  order_id, instrument_uid, account_id, side, type, price_units, price_nano,
+                  order_id, proposal_id, instrument_uid, account_id, side, type, price_units, price_nano,
                   lots, state, created_at, updated_at
                 )
-                VALUES (?, 'uid-sber', 'BOT-1', 'buy', 'LIMIT', ?, ?, 1, 'submitted', 0, 0)
+                VALUES (?, ?, 'uid-sber', 'BOT-1', 'buy', 'LIMIT', ?, ?, 1, 'submitted', 0, 0)
                 """,
-                (order_id, price_units, price_nano),
+                (order_id, proposal_id, price_units, price_nano),
             )
+
+
+def test_orders_require_non_empty_unique_idempotency_key() -> None:
+    connection = _connection_with_share()
+    proposal_id = _confirmed_proposal(connection)
+
+    for order_id in [None, "", "   "]:
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """
+                INSERT INTO orders (
+                  order_id, proposal_id, instrument_uid, account_id, side, type, price_units, price_nano,
+                  lots, state, created_at, updated_at
+                )
+                VALUES (?, ?, 'uid-sber', 'BOT-1', 'buy', 'LIMIT', 100, 0, 1, 'submitted', 0, 0)
+                """,
+                (order_id, proposal_id),
+            )
+
+    connection.execute(
+        """
+        INSERT INTO orders (
+          order_id, proposal_id, instrument_uid, account_id, side, type, price_units, price_nano,
+          lots, state, created_at, updated_at
+        )
+        VALUES ('order-unique', ?, 'uid-sber', 'BOT-1', 'buy', 'LIMIT', 100, 0, 1, 'submitted', 0, 0)
+        """,
+        (proposal_id,),
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        connection.execute(
+            """
+            INSERT INTO orders (
+              order_id, proposal_id, instrument_uid, account_id, side, type, price_units, price_nano,
+              lots, state, created_at, updated_at
+            )
+            VALUES ('order-unique', ?, 'uid-sber', 'BOT-1', 'buy', 'LIMIT', 100, 0, 1, 'submitted', 0, 0)
+            """,
+            (proposal_id,),
+        )
+
+
+def test_buy_orders_require_confirmed_selected_proposal() -> None:
+    connection = _connection_with_share()
+    selected_signal_id = connection.execute(
+        """
+        INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+        VALUES ('uid-sber', 1, 'selected', NULL, 1)
+        RETURNING id
+        """
+    ).fetchone()[0]
+    connection.execute(
+        """
+        INSERT INTO proposals (
+          proposal_id, signal_id, created_at, ttl_ms, telegram_user_id, state
+        )
+        VALUES ('proposal-pending', ?, 1, 60000, 1, 'awaiting_confirmation')
+        """,
+        (selected_signal_id,),
+    )
+
+    for proposal_id in [None, "proposal-pending"]:
+        with pytest.raises(sqlite3.DatabaseError, match="confirmed selected proposal"):
+            connection.execute(
+                """
+                INSERT INTO orders (
+                  order_id, proposal_id, instrument_uid, account_id, side, type, price_units, price_nano,
+                  lots, state, created_at, updated_at
+                )
+                VALUES ('order-buy-blocked', ?, 'uid-sber', 'BOT-1', 'buy', 'LIMIT', 100, 0, 1, 'submitted', 0, 0)
+                """,
+                (proposal_id,),
+            )
+
+
+def test_buy_order_proposal_must_match_order_instrument() -> None:
+    connection = _connection_with_share()
+    connection.execute(
+        """
+        INSERT INTO instrument_reference (
+          instrument_uid, ticker, instrument_kind, is_tradable, lot,
+          min_price_increment_units, min_price_increment_nano, whitelist_status,
+          source, source_version, as_of
+        )
+        VALUES ('uid-gazp', 'GAZP', 'share', 1, 10, 0, 10000000, 'approved', 'moex_iss', 1, 0)
+        """
+    )
+    proposal_id = _confirmed_proposal(connection)
+
+    with pytest.raises(sqlite3.DatabaseError, match="confirmed selected proposal"):
+        connection.execute(
+            """
+            INSERT INTO orders (
+              order_id, proposal_id, instrument_uid, account_id, side, type, price_units, price_nano,
+              lots, state, created_at, updated_at
+            )
+            VALUES ('order-wrong-instrument', ?, 'uid-gazp', 'BOT-1', 'buy', 'LIMIT', 100, 0, 1, 'submitted', 0, 0)
+            """,
+            (proposal_id,),
+        )
+
+
+def test_buy_order_instrument_update_must_still_match_proposal() -> None:
+    connection = _connection_with_share()
+    connection.execute(
+        """
+        INSERT INTO instrument_reference (
+          instrument_uid, ticker, instrument_kind, is_tradable, lot,
+          min_price_increment_units, min_price_increment_nano, whitelist_status,
+          source, source_version, as_of
+        )
+        VALUES ('uid-gazp', 'GAZP', 'share', 1, 10, 0, 10000000, 'approved', 'moex_iss', 1, 0)
+        """
+    )
+    proposal_id = _confirmed_proposal(connection)
+    connection.execute(
+        """
+        INSERT INTO orders (
+          order_id, proposal_id, instrument_uid, account_id, side, type, price_units, price_nano,
+          lots, state, created_at, updated_at
+        )
+        VALUES ('order-sber', ?, 'uid-sber', 'BOT-1', 'buy', 'LIMIT', 100, 0, 1, 'submitted', 0, 0)
+        """,
+        (proposal_id,),
+    )
+
+    with pytest.raises(sqlite3.DatabaseError, match="confirmed selected proposal"):
+        connection.execute(
+            "UPDATE orders SET instrument_uid = 'uid-gazp' WHERE order_id = 'order-sber'"
+        )
+
+
+def test_buy_order_locks_confirmed_proposal_and_selected_signal_chain() -> None:
+    connection = _connection_with_share()
+    proposal_id = _confirmed_proposal(connection)
+    signal_id = connection.execute(
+        "SELECT signal_id FROM proposals WHERE proposal_id = ?",
+        (proposal_id,),
+    ).fetchone()[0]
+    replacement_signal_id = connection.execute(
+        """
+        INSERT INTO signals (instrument_uid, ts, decision, reason, created_at)
+        VALUES ('uid-sber', 2, 'selected', NULL, 2)
+        RETURNING id
+        """
+    ).fetchone()[0]
+    connection.execute(
+        """
+        INSERT INTO orders (
+          order_id, proposal_id, instrument_uid, account_id, side, type, price_units, price_nano,
+          lots, state, created_at, updated_at
+        )
+        VALUES ('order-sber', ?, 'uid-sber', 'BOT-1', 'buy', 'LIMIT', 100, 0, 1, 'submitted', 0, 0)
+        """,
+        (proposal_id,),
+    )
+
+    with pytest.raises(sqlite3.DatabaseError, match="confirmed proposal is locked"):
+        connection.execute(
+            "UPDATE proposals SET state = 'rejected' WHERE proposal_id = ?",
+            (proposal_id,),
+        )
+    with pytest.raises(sqlite3.DatabaseError, match="proposal signal is locked"):
+        connection.execute(
+            "UPDATE proposals SET signal_id = ? WHERE proposal_id = ?",
+            (replacement_signal_id, proposal_id),
+        )
+    with pytest.raises(sqlite3.DatabaseError, match="selected signal is locked"):
+        connection.execute(
+            """
+            UPDATE signals
+            SET decision = 'skipped', reason = 'data_conflict'
+            WHERE id = ?
+            """,
+            (signal_id,),
+        )
+    with pytest.raises(sqlite3.DatabaseError, match="signal instrument is locked"):
+        connection.execute(
+            "UPDATE signals SET instrument_uid = 'uid-missing' WHERE id = ?",
+            (signal_id,),
+        )
+
+
+def test_sell_orders_require_open_matching_position() -> None:
+    connection = _connection_with_share()
+    position_id = _open_position(connection, qty=2)
+
+    connection.execute(
+        """
+        INSERT INTO orders (
+          order_id, position_id, instrument_uid, account_id, side, type, price_units, price_nano,
+          lots, state, created_at, updated_at
+        )
+        VALUES ('order-sell-ok', ?, 'uid-sber', 'BOT-1', 'sell', 'LIMIT', 100, 0, 1, 'submitted', 0, 0)
+        """,
+        (position_id,),
+    )
+
+    with pytest.raises(sqlite3.DatabaseError, match="open matching position"):
+        connection.execute(
+            """
+            INSERT INTO orders (
+              order_id, position_id, instrument_uid, account_id, side, type, price_units, price_nano,
+              lots, state, created_at, updated_at
+            )
+            VALUES ('order-sell-too-many', ?, 'uid-sber', 'BOT-1', 'sell',  'LIMIT', 100, 0, 3, 'submitted', 0, 0)
+            """,
+            (position_id,),
+        )
 
 
 def test_candles_reject_negative_prices_and_volume() -> None:

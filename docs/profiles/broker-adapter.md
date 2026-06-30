@@ -1,13 +1,19 @@
 # Profile: broker-adapter  (status: dormant)
 
-Governs the **T-Invest (T-Bank) API adapter** — the only thing that talks to the
-broker. Its job is not "to trade" but to prove the system can talk to the broker
-*safely and deterministically*.
+Governs the **T-Invest (T-Bank) API adapter** — the only component that owns
+broker-account, portfolio, order-state, and order-placement API calls. Its job is
+not "to trade" but to prove the system can talk to the broker *safely and
+deterministically*.
 
 ## Scope
-- Read paths: list accounts, read portfolio / positions / orders / candles /
+- Broker-account read paths: list accounts, read portfolio / positions / orders /
   trading status; instrument normalization by `instrument_uid` (not FIGI as the
   primary key).
+- Market-data exception while dormant: the active `research-backtest` profile may
+  keep read-only market-data persistence and may later add read-only T-Invest
+  market-data access only under the secrets/token policy and without order
+  capability. Any broker-account read path, order path, full-access/live token
+  handling, or trading loop still belongs here and requires activation.
 - Write paths: place / cancel **limit** orders in the **sandbox** first; map
   external order statuses deterministically into the internal state machine.
 - Pre-order checks: instrument is tradable, trading status (`NORMAL_TRADING` vs
@@ -20,8 +26,10 @@ broker. Its job is not "to trade" but to prove the system can talk to the broker
   startup/restart before trading.
 
 ## Status rule
-- **dormant** — rules exist; NO SDK / dependency / network code may be introduced
-  until an explicit request flips status to `active`. `component-guardian` enforces.
+- **dormant** — rules exist; NO broker-account SDK / dependency / network code may
+  be introduced until an explicit request flips status to `active`. The narrow
+  M1 read-only market-data exception above is the only carve-out.
+  `component-guardian` enforces.
 
 ## Active toolchain (when active)
 Leave empty while dormant. Intended: official T-Invest Python SDK over the
