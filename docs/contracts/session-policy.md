@@ -201,8 +201,28 @@ produces no signals, no proposal, no entry (and no misfire — §4.3).
   MOEX calendar endpoint) — confirm the exact endpoint + anonymous availability at integration (mirrors the
   ISS-source [verify] notes in db-schema §5 / tax §7). Until wired, the **live status gate (§2) is the
   fail-safe** (a holiday simply never shows `NORMAL_TRADING`).
+  **Interim implemented producer (M1, PR #15 + this change; PROVISIONAL — owner decision 2.7,
+  `docs/ops/pre-live-owner-decisions.md`):** the calendar is DERIVED from IMOEX index D1 candle dates
+  (`data/calendar.py` — a printed bar == a trading day; no-lookahead, fail-closed). This does NOT close the
+  endpoint [verify]; it is a stopgap that keeps one calendar source consistent with the ingested index series.
 - **Trading-day arithmetic** elsewhere (e.g. dividend ex-date = `last_buy_date + 1 trading day`, tax §6) uses
   the **same** MOEX trading calendar — one calendar source, no divergence.
+- **Coverage vs contents + same-day ambiguity (`session_policy.py::resolve_daily_run`, M1):** the decision
+  function tracks the calendar-load **coverage** (`till_date` requested) separately from its contents. A fetch
+  that never reached today reports **`calendar_stale`** — a loud data problem, never a fake holiday. When
+  coverage claims today but today's bar is absent, holiday and ISS same-day publication lag are
+  indistinguishable in the derived calendar; the `same_day_absence` policy pins the interpretation and
+  **defaults to the loud `calendar_stale`** until the publication-timing [verify] below resolves (PROVISIONAL —
+  owner decision 2.6). Fail-safe direction: a calendar false-negative can only skip an entry cycle, never admit
+  one, and exits are never gated by this function.
+- **Short sessions — honesty note:** the derived calendar carries day labels only, no close times; early-close
+  times are deliberately NOT modeled (no verified source). Under the ratified `auction_close` + 19:05 pair an
+  early close is **latency-safe**: the §6 threshold can only fire late (after an even-earlier final close),
+  never before it. The per-instrument `is_complete` gate (data-layer §4) and, at M4, the live §2 status read
+  remain the real safety layers.
+- **New [verify] (M1, empirical):** (i) is the same-day IMOEX D1 bar published by ISS by ~19:05 MSK (feeds the
+  `same_day_absence` decision); (ii) does ISS print index bars dated on MOEX weekend/irregular sessions (feeds
+  trading-day arithmetic)?
 
 ## 6. Close definition & daily run time — RATIFIED (no-lookahead LAW surface)
 
@@ -255,7 +275,12 @@ daily_run_time   = "19:05"  # Europe/Moscow
   GetCandles D1 `close` is an empirical M1/M4 check (db-schema §5). It is informational while the ratified
   decision source is `auction_close`; changing that source later requires owner decision + ADR.
 - **MOEX trading-calendar source [verify].** Exact MOEX ISS calendar endpoint + anonymous availability for
-  holiday / short-session detection (§5); until wired, the live status gate (§2) is the fail-safe.
+  holiday / short-session detection (§5); until wired, the live status gate (§2) is the fail-safe. Interim
+  producer implemented: IMOEX-derived calendar (§5; `data/calendar.py`) — the endpoint [verify] stays open.
+- **ISS same-day index-bar publication timing [verify] (M1, empirical).** Is the IMOEX D1 bar for day D
+  published by ~19:05 MSK on D? Resolves the §5 `same_day_absence` policy (owner decision 2.6).
+- **ISS weekend/irregular-session bars [verify] (M1, empirical).** Does ISS print index bars dated on MOEX
+  weekend/irregular working sessions? Affects derived-calendar trading-day arithmetic (§5).
 - **APScheduler misfire/grace window [verify].** `misfire_grace_time` + `coalesce` tuning for host-sleep /
   watchdog (§4.3) pairs with the §17 NTP/time-sync + watchdog work.
 - **`monthly_whitelist_review` schedule [owner-pending].** Day-of-month + time for the monthly job (§4.2);
