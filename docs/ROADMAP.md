@@ -12,11 +12,13 @@
   data-store, latest-as-of read path, and `data_conflict` gating; PR #12 enforced the
   frozen pilot risk band at `RiskSettings` construction (ADR-0008); PR #13 made
   `data_conflict` re-detection idempotent (partial UNIQUE on open rows) at SQLite
-  `SCHEMA_VERSION = 4`, so current main is `6576f28`.
+  `SCHEMA_VERSION = 4`; PR #14 synced the status surfaces + removed a dead
+  `install-hooks.mjs` binding; PR #15 added the MOEX trading-calendar loader,
+  so current main is `335485c`.
   Verify + harness gates run on PR/main.
 - **Done:** agent harness (`check-kit` currently reports 53 checks / 0 failed), Second Brain folder, frozen invariants, comprehensive TZ
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
-  Merged to `main` (latest verified `6576f28` after PR #13; PR #7 closed M0 with CI,
+  Merged to `main` (latest verified `335485c` after PR #15; PR #7 closed M0 with CI,
   PR #6 shipped the M0 skeleton, PR #5 the pre-M0 readiness layer).
 - **Initial M0 code shipped** — `research-backtest` is active; `broker-adapter` and
   `execution-confirm` remain dormant. The shipped M0 scope is config, schema, account-guard stub,
@@ -38,6 +40,14 @@
   re-detection is now idempotent — a partial UNIQUE on open `data_conflicts` rows plus an
   `ON CONFLICT ... WHERE resolved = 0` upsert keep the earliest `as_of` and emit at most
   one skip signal per bar; SQLite `SCHEMA_VERSION` bumped 3 → 4 (pre-v4 DBs fail closed).
+- **Tier-1 cleanup landed (2026-07-01, PR #14):** repo status surfaces (README, AGENTS,
+  ROADMAP, `.agent-kit.json`) synced to `6576f28`/schema v4/PR #12+#13; dead `root`
+  binding removed from `tools/install-hooks.mjs` (fail-closed behavior preserved).
+- **M1 trading calendar landed (2026-07-01, PR #15):** `src/stonksbot/data/calendar.py` —
+  immutable UTC-day-normalized `TradingCalendar` (is/next/previous/add/range) with
+  producers deriving trading days from MOEX ISS IMOEX D1 candle dates (printed bar =
+  trading day; no-lookahead, fail-closed); wires the previously producerless
+  `_next_trading_day` / `store_dividend_snapshot` (+14 tests, 96 total).
 - **Pre-M0 contract layer RESOLVED (2026-06-27 #3):** TZ §4.1/§5.1/§12.1 → `docs/contracts/`
   (config-and-secrets, db-schema, tax-and-dividends); `[verify]` gaps closed by research (index = MOEX ISS,
   SDK = `t-tech-investments` via GitLab, `GetDividends`, auction close, НДФЛ 13/15%); **secret-scan gate added**.
@@ -67,13 +77,17 @@
 - **Exit:** `check-kit` green + `verify.fast`/`verify.deep`/`verify.ship` green; profile checklist "data schema recorded" checked.
 
 ### M1 — Data layer  `[~]`  (research-backtest)
-- [~] T-Invest read-only + MOEX ISS fallback/cross-check; `candles` + `instrument_reference` (uid-keyed) **+ index series** (IMOEX/MCFTR — MOEX ISS, ADR-0005). Current slice: MOEX ISS read-only candles with pagination/fail-closed checks; no broker/execution SDK, full-access/live token, Telegram, or order path.
+- [~] T-Invest read-only + MOEX ISS fallback/cross-check; `candles` + `instrument_reference` (uid-keyed) **+ index series** (IMOEX/MCFTR — MOEX ISS, ADR-0005). Current slice: MOEX ISS read-only candles with pagination/fail-closed checks + the MOEX trading calendar (PR #15, derived from IMOEX D1 candle dates); no broker/execution SDK, full-access/live token, Telegram, or order path.
 - [ ] **universe registry + status transitions** (managed-registry invariant); eligibility filters
 - [~] snapshot versioning/read path; **`data_conflict` DETECTION/flagging tested** (PR #11 landed insert-only snapshots, latest-as-of reads, stale/conflict entry skips, dividend `as_of` gating, persistent conflict skip signals; PR #13 made re-detection idempotent — partial UNIQUE on open rows + earliest-`as_of` upsert + one skip signal per bar, `SCHEMA_VERSION` 3 → 4; historical/synthetic divergence fixtures and live skip-entry asserted in M4 remain)
 - [ ] split adjustment + ticker-history (TCSG→T) + dividend calendar (T-Invest GetDividends, ADR-0005)
 - **Exit:** reproducible versioned 3y dataset (+ warm-up) incl. index; detection path tested.
 
 ### M2 — Strategy + honest backtest  `[ ]`  (research-backtest)
+> **Path binding (evidence gate):** M2 strategy/backtest/signals code must live under the
+> `.agent-kit.json` `evidenceGates` globs — `**/strategy/**`-style directories or
+> `**/strategy*.py`-style flat modules — otherwise the gate silently never fires.
+> A different layout requires extending the globs in the same change.
 - [ ] strategy contract (TZ §6, MAs pinned to MA20/MA50 live); ranking
 - [ ] backtest: conservative fills **both sides** (mirrors §8 entry rule), costs **both tariffs incl. 390 ₽/mo**, slippage
 - [ ] taxes (НДФЛ FIFO, **hand-computed tax fixture**) + dividends (net) + dividend-gap block; benchmarks (equal-weight, IMOEX, MCFTR gross, cash)
