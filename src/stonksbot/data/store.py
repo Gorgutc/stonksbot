@@ -5,6 +5,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Literal
 
+from stonksbot.data.calendar import TradingCalendar
 from stonksbot.data.moex_iss import Quotation
 
 
@@ -371,7 +372,7 @@ def store_dividend_snapshot(
     connection: sqlite3.Connection,
     dividend: DividendSnapshot,
     *,
-    trading_calendar: list[int] | tuple[int, ...] | None = None,
+    trading_calendar: list[int] | tuple[int, ...] | TradingCalendar | None = None,
 ) -> None:
     _validate_source(dividend.source)
     ex_date = dividend.ex_date
@@ -526,7 +527,14 @@ def _validate_source(source: str) -> None:
         raise ValueError(f"source must be one of {sorted(VALID_DATA_SOURCES)}")
 
 
-def _next_trading_day(last_buy_date: int, trading_calendar: list[int] | tuple[int, ...]) -> int:
+def _next_trading_day(
+    last_buy_date: int,
+    trading_calendar: list[int] | tuple[int, ...] | TradingCalendar,
+) -> int:
+    # A TradingCalendar producer (built from MOEX ISS index sessions) is the real source; the raw
+    # sorted-sequence path is retained for callers that already hold an explicit day list.
+    if isinstance(trading_calendar, TradingCalendar):
+        return trading_calendar.next_trading_day(last_buy_date)
     for trading_day in sorted(trading_calendar):
         if trading_day > last_buy_date:
             return trading_day
