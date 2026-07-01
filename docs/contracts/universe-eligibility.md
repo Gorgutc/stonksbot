@@ -82,6 +82,20 @@ A ticker must appear in **at most one** list; the loader hard-fails on a ticker 
 The owner-ratified M0 lists are `universe.approved=[SBER,T,GAZP,ROSN,TATN,X5]` and
 `universe.watch_only=[IRAO,LKOH]` (2026-06-29).
 
+Materialization semantics (`data/registry.py::materialize_universe_registry`, M1):
+
+- **Idempotent:** a re-run with unchanged config changes no rows and journals nothing. A status transition
+  updates the row **in place** (the reference table is mutable-with-provenance — uid-only PK, unlike
+  version-keyed candles), bumps `source_version`, and appends one `audit_journal` row.
+- **Config-driven changes are owner acts.** The loader writes only what the owner committed in config; this is
+  the owner acting through config (§2), not an autonomous bot registry write.
+- **Orphans (PROVISIONAL — owner decision 2.5, `docs/ops/pre-live-owner-decisions.md`):** a DB share row absent
+  from every config list is **surfaced** to the caller as drift for owner attention — never deleted, never
+  demoted (the bot may never demote, §2).
+- Index rows (IMOEX/MCFTR) are seeded separately (`seed_index_reference`): `instrument_kind='index'`,
+  `is_tradable=0`, `whitelist_status NULL`; `cash`/`equal_weight` stay synthetic with no DB row
+  ([db-schema.md](db-schema.md) §3.1).
+
 ## 3. Per-cycle eligibility filter (TZ §5, §6, §7.3) [LAW: starting values]
 
 Runs **only** on `approved` tickers, **every decision cycle** (after the final D1 close, per
@@ -214,7 +228,10 @@ confirm**. Strict rules [LAW]:
   be `skipped` each cycle (never silently demoted); the monthly job may *propose* its replacement, but only
   the owner enacts it.
 - Every registry change is journaled in `audit_journal` ([db-schema.md](db-schema.md) §3.3) with the actor
-  (`'owner:<telegram_user_id>'` for confirmations; `'system'` for the `pending` proposal).
+  (`'owner:<telegram_user_id>'` for confirmations; `'system'` for the `pending` proposal; `'system'` with a
+  `detail` JSON naming the config origin for config-materialized status changes — the owner authored the
+  config, the process applying it is the system; PROVISIONAL — owner decision 2.2,
+  `docs/ops/pre-live-owner-decisions.md`).
 
 ## 7. Worked examples (illustrative — fixtures live with M1/M4 tests)
 

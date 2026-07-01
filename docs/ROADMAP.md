@@ -78,7 +78,7 @@
 
 ### M1 — Data layer  `[~]`  (research-backtest)
 - [~] T-Invest read-only + MOEX ISS fallback/cross-check; `candles` + `instrument_reference` (uid-keyed) **+ index series** (IMOEX/MCFTR — MOEX ISS, ADR-0005). Current slice: MOEX ISS read-only candles with pagination/fail-closed checks + the MOEX trading calendar (PR #15, derived from IMOEX D1 candle dates); no broker/execution SDK, full-access/live token, Telegram, or order path.
-- [ ] **universe registry + status transitions** (managed-registry invariant); eligibility filters
+- [~] **universe registry + status transitions** (managed-registry invariant); eligibility filters. Landed: config→`whitelist_status` materialization + IMOEX/MCFTR index seeding (`data/registry.py`), ISS index-candle ingest into the versioned store (`data/ingest.py`), pure session-policy daily-cycle gate (`session_policy.py`); the per-cycle eligibility filter itself remains todo.
 - [~] snapshot versioning/read path; **`data_conflict` DETECTION/flagging tested** (PR #11 landed insert-only snapshots, latest-as-of reads, stale/conflict entry skips, dividend `as_of` gating, persistent conflict skip signals; PR #13 made re-detection idempotent — partial UNIQUE on open rows + earliest-`as_of` upsert + one skip signal per bar, `SCHEMA_VERSION` 3 → 4; historical/synthetic divergence fixtures and live skip-entry asserted in M4 remain)
 - [ ] split adjustment + ticker-history (TCSG→T) + dividend calendar (T-Invest GetDividends, ADR-0005)
 - **Exit:** reproducible versioned 3y dataset (+ warm-up) incl. index; detection path tested.
