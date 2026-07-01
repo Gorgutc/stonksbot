@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from urllib.parse import parse_qs, urlparse
@@ -12,6 +13,33 @@ from stonksbot.data.moex_iss import (
     loads_iss_json,
     parse_candles,
 )
+
+CANDLE_COLUMNS = ["begin", "open", "high", "low", "close", "volume"]
+CURSOR_COLUMNS = ["INDEX", "TOTAL", "PAGESIZE"]
+
+
+def candles_payload(rows: list[list[object]]) -> dict[str, object]:
+    """ISS candles block as `parse_candles` consumes it (already-decoded values)."""
+    return {"candles": {"columns": list(CANDLE_COLUMNS), "data": rows}}
+
+
+def iss_page_json(
+    rows: list[list[object]],
+    *,
+    cursor: tuple[int, int, int] | None = None,
+) -> str:
+    """Raw ISS JSON page as an injected `read_text` reader would return it.
+
+    `cursor=None` deliberately omits the `candles.cursor` block (the fail-closed case).
+    """
+    payload: dict[str, object] = {"candles": {"columns": list(CANDLE_COLUMNS), "data": rows}}
+    if cursor is not None:
+        index, total, pagesize = cursor
+        payload["candles.cursor"] = {
+            "columns": list(CURSOR_COLUMNS),
+            "data": [[index, total, pagesize]],
+        }
+    return json.dumps(payload)
 
 
 def test_build_candles_url_uses_daily_index_endpoint() -> None:
@@ -40,21 +68,18 @@ def test_loads_iss_json_preserves_decimal_values() -> None:
 
 
 def test_parse_candles_returns_epoch_ms_and_quotation_pairs() -> None:
-    payload = {
-        "candles": {
-            "columns": ["begin", "open", "high", "low", "close", "volume"],
-            "data": [
-                [
-                    "2026-06-27",
-                    Decimal("3210.12"),
-                    Decimal("3220.50"),
-                    Decimal("3201.01"),
-                    Decimal("3215.99"),
-                    123456789,
-                ]
-            ],
-        }
-    }
+    payload = candles_payload(
+        [
+            [
+                "2026-06-27",
+                Decimal("3210.12"),
+                Decimal("3220.50"),
+                Decimal("3201.01"),
+                Decimal("3215.99"),
+                123456789,
+            ]
+        ]
+    )
 
     candles = parse_candles(payload, secid="IMOEX", market="index")
 
@@ -73,33 +98,27 @@ def test_parse_candles_returns_epoch_ms_and_quotation_pairs() -> None:
 
 
 def test_parse_candles_rejects_float_prices() -> None:
-    payload = {
-        "candles": {
-            "columns": ["begin", "open", "high", "low", "close", "volume"],
-            "data": [["2026-06-27", 3210.12, Decimal("3220.50"), Decimal("3201.01"), Decimal("3215.99"), 1]],
-        }
-    }
+    payload = candles_payload(
+        [["2026-06-27", 3210.12, Decimal("3220.50"), Decimal("3201.01"), Decimal("3215.99"), 1]]
+    )
 
     with pytest.raises(TypeError, match="float"):
         parse_candles(payload, secid="IMOEX", market="index")
 
 
 def test_parse_candles_rejects_sub_nano_price_precision() -> None:
-    payload = {
-        "candles": {
-            "columns": ["begin", "open", "high", "low", "close", "volume"],
-            "data": [
-                [
-                    "2026-06-27",
-                    Decimal("3210.1234567895"),
-                    Decimal("3220.50"),
-                    Decimal("3201.01"),
-                    Decimal("3215.99"),
-                    1,
-                ]
-            ],
-        }
-    }
+    payload = candles_payload(
+        [
+            [
+                "2026-06-27",
+                Decimal("3210.1234567895"),
+                Decimal("3220.50"),
+                Decimal("3201.01"),
+                Decimal("3215.99"),
+                1,
+            ]
+        ]
+    )
 
     with pytest.raises(ValueError, match="sub-nano"):
         parse_candles(payload, secid="IMOEX", market="index")
@@ -110,18 +129,10 @@ def test_fetch_daily_candles_uses_injected_reader_without_tokens() -> None:
 
     def read_text(url: str) -> str:
         captured_urls.append(url)
-        return """
-        {
-          "candles": {
-            "columns": ["begin", "open", "high", "low", "close", "volume"],
-            "data": [["2026-06-27", 3210.12, 3220.50, 3201.01, 3215.99, 10]]
-          },
-          "candles.cursor": {
-            "columns": ["INDEX", "TOTAL", "PAGESIZE"],
-            "data": [[0, 1, 500]]
-          }
-        }
-        """
+        return iss_page_json(
+            [["2026-06-27", 3210.12, 3220.50, 3201.01, 3215.99, 10]],
+            cursor=(0, 1, 500),
+        )
 
     candles = fetch_daily_candles(
         "IMOEX",
@@ -139,14 +150,10 @@ def test_fetch_daily_candles_uses_injected_reader_without_tokens() -> None:
 
 def test_fetch_daily_candles_rejects_non_empty_payload_without_cursor() -> None:
     def read_text(_: str) -> str:
-        return """
-        {
-          "candles": {
-            "columns": ["begin", "open", "high", "low", "close", "volume"],
-            "data": [["2026-06-27", 3210.12, 3220.50, 3201.01, 3215.99, 10]]
-          }
-        }
-        """
+        return iss_page_json(
+            [["2026-06-27", 3210.12, 3220.50, 3201.01, 3215.99, 10]],
+            cursor=None,
+        )
 
     with pytest.raises(ValueError, match="missing candles.cursor"):
         fetch_daily_candles(
@@ -166,34 +173,18 @@ def test_fetch_daily_candles_follows_iss_cursor_until_total() -> None:
         start = query["start"][0]
         captured_starts.append(start)
         if start == "0":
-            return """
-            {
-              "candles": {
-                "columns": ["begin", "open", "high", "low", "close", "volume"],
-                "data": [
-                  ["2026-06-25", 100, 101, 99, 100, 10],
-                  ["2026-06-26", 101, 102, 100, 101, 11]
-                ]
-              },
-              "candles.cursor": {
-                "columns": ["INDEX", "TOTAL", "PAGESIZE"],
-                "data": [[0, 3, 2]]
-              }
-            }
-            """
+            return iss_page_json(
+                [
+                    ["2026-06-25", 100, 101, 99, 100, 10],
+                    ["2026-06-26", 101, 102, 100, 101, 11],
+                ],
+                cursor=(0, 3, 2),
+            )
         if start == "2":
-            return """
-            {
-              "candles": {
-                "columns": ["begin", "open", "high", "low", "close", "volume"],
-                "data": [["2026-06-27", 102, 103, 101, 102, 12]]
-              },
-              "candles.cursor": {
-                "columns": ["INDEX", "TOTAL", "PAGESIZE"],
-                "data": [[2, 3, 2]]
-              }
-            }
-            """
+            return iss_page_json(
+                [["2026-06-27", 102, 103, 101, 102, 12]],
+                cursor=(2, 3, 2),
+            )
         raise AssertionError(f"unexpected ISS start offset: {start}")
 
     candles = fetch_daily_candles(
@@ -216,18 +207,10 @@ def test_fetch_daily_candles_rejects_short_page_before_cursor_total() -> None:
     def read_text(url: str) -> str:
         query = parse_qs(urlparse(url).query)
         assert query["start"] == ["0"]
-        return """
-        {
-          "candles": {
-            "columns": ["begin", "open", "high", "low", "close", "volume"],
-            "data": [["2026-06-25", 100, 101, 99, 100, 10]]
-          },
-          "candles.cursor": {
-            "columns": ["INDEX", "TOTAL", "PAGESIZE"],
-            "data": [[0, 3, 2]]
-          }
-        }
-        """
+        return iss_page_json(
+            [["2026-06-25", 100, 101, 99, 100, 10]],
+            cursor=(0, 3, 2),
+        )
 
     with pytest.raises(ValueError, match="short page"):
         fetch_daily_candles(
@@ -240,15 +223,12 @@ def test_fetch_daily_candles_rejects_short_page_before_cursor_total() -> None:
 
 
 def test_parse_candles_rejects_duplicate_begin_values() -> None:
-    payload = {
-        "candles": {
-            "columns": ["begin", "open", "high", "low", "close", "volume"],
-            "data": [
-                ["2026-06-27", Decimal("100"), Decimal("101"), Decimal("99"), Decimal("100"), 10],
-                ["2026-06-27", Decimal("101"), Decimal("102"), Decimal("100"), Decimal("101"), 11],
-            ],
-        }
-    }
+    payload = candles_payload(
+        [
+            ["2026-06-27", Decimal("100"), Decimal("101"), Decimal("99"), Decimal("100"), 10],
+            ["2026-06-27", Decimal("101"), Decimal("102"), Decimal("100"), Decimal("101"), 11],
+        ]
+    )
 
     with pytest.raises(ValueError, match="duplicate"):
         parse_candles(payload, secid="IMOEX", market="index")
