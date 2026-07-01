@@ -188,6 +188,17 @@ def ingest_index_candles(
     if calendar is not None:
         first_day = min(seen_ts)
         last_day = max(seen_ts)
+        # trading_days_in_range silently returns the INTERSECTION with calendar
+        # contents, so a calendar narrower than the candle span would make
+        # missing sessions in the uncovered finalized region vanish without a
+        # conflict row — fail closed instead (data-truth discipline; the caller
+        # must fetch a calendar window at least as wide as the candle window).
+        finalized = [day for day in seen_ts if day < complete_before_ts]
+        if finalized and (calendar.first > first_day or calendar.last < max(finalized)):
+            raise ValueError(
+                "trading calendar does not cover the missing-bar scan window; "
+                "extend the calendar fetch window to span the ingested candles"
+            )
         expected = [
             day
             for day in calendar.trading_days_in_range(first_day, last_day)

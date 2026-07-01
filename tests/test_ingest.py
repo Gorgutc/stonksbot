@@ -179,6 +179,33 @@ def test_incomplete_region_is_not_scanned_for_missing_bars() -> None:
     assert result.missing_bar_conflict_ids == ()
 
 
+def test_missing_bar_scan_requires_calendar_coverage() -> None:
+    connection, _uid = _connection_with_index()
+    # Calendar covers only late June; the candle span starts on June 1 — the
+    # uncovered finalized region must fail closed, not silently scan nothing.
+    calendar = build_trading_calendar([_day(25), _day(26)])
+    early = MoexIssCandle(
+        secid="IMOEX",
+        market="index",
+        ts=_day(1),
+        open=Quotation(100, 0),
+        high=Quotation(101, 0),
+        low=Quotation(99, 0),
+        close=Quotation(100, 0),
+        volume=5,
+    )
+
+    with pytest.raises(ValueError, match="does not cover the missing-bar scan window"):
+        ingest_index_candles(
+            connection,
+            ticker="IMOEX",
+            candles=[early, _candle(25)],
+            as_of=_day(26),
+            complete_before_ts=_day(26),
+            calendar=calendar,
+        )
+
+
 def test_ingest_fails_closed_on_bad_inputs() -> None:
     connection, _uid = _connection_with_index()
 
