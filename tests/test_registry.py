@@ -192,6 +192,56 @@ def test_materialize_rejects_uid_mapped_to_index() -> None:
         )
 
 
+def test_materialize_rejects_second_uid_for_existing_ticker() -> None:
+    connection = _connection()
+    materialize_universe_registry(
+        connection, statuses_by_ticker=_ratified_statuses(), as_of=1_000
+    )
+
+    # A future T-Invest uid for an already-materialized ticker is an identifier
+    # transition, not a silent second share row with a stale status.
+    with pytest.raises(ValueError, match="re-stitch identifiers explicitly"):
+        materialize_universe_registry(
+            connection,
+            statuses_by_ticker=build_universe_status_map(blocked=["SBER"]),
+            uids_by_ticker={"SBER": "tinvest-uid-123"},
+            as_of=2_000,
+        )
+    rows = connection.execute(
+        "SELECT COUNT(*) FROM instrument_reference WHERE ticker = 'SBER'"
+    ).fetchone()
+    assert int(rows[0]) == 1
+
+
+def test_failed_materialization_writes_nothing() -> None:
+    connection = _connection()
+    # 'T' pre-exists under a different uid -> pass-1 planning must raise before
+    # any row is written or journaled (validate-before-write discipline).
+    connection.execute(
+        """
+        INSERT INTO instrument_reference (
+          instrument_uid, ticker, instrument_kind, is_tradable,
+          whitelist_status, source, source_version, as_of
+        )
+        VALUES ('legacy-uid-t', 'T', 'share', 1, 'approved', 'moex_iss', 1, 5)
+        """
+    )
+
+    with pytest.raises(ValueError, match="re-stitch identifiers explicitly"):
+        materialize_universe_registry(
+            connection,
+            statuses_by_ticker=_ratified_statuses(),
+            uids_by_ticker={"T": "tinvest-uid-t"},
+            as_of=1_000,
+        )
+
+    count = connection.execute(
+        "SELECT COUNT(*) FROM instrument_reference"
+    ).fetchone()
+    assert int(count[0]) == 1  # only the pre-existing row
+    assert _audit_count(connection) == 0
+
+
 def test_schema_rejects_index_row_with_whitelist_status() -> None:
     connection = _connection()
 

@@ -78,12 +78,19 @@ def materialize_universe_registry(
     is mutable-with-provenance — uid-only PK, unlike version-keyed candles),
     bumps ``source_version``, and appends one ``audit_journal`` row. Rows are
     never deleted; shares missing from the config are returned as ``orphans``.
+
+    Two-pass discipline: pass 1 is read-only planning — every validation raise
+    happens BEFORE the first write, so a failed materialization can never leave
+    half-written rows in the caller's transaction; pass 2 performs the writes
+    and journals each transition immediately after its own write.
     """
     _validate_source(source)
     if not statuses_by_ticker:
         raise ValueError("universe config resolved to zero tickers; refusing to materialize")
 
-    changes: list[RegistryChange] = []
+    # Pass 1 — read-only planning + validation (no writes).
+    inserts: list[tuple[str, str, UniverseStatus]] = []
+    updates: list[tuple[str, str, UniverseStatus, UniverseStatus, int]] = []
     for ticker in sorted(statuses_by_ticker):
         status = statuses_by_ticker[ticker]
         normalized = ticker.strip().upper()
@@ -96,6 +103,26 @@ def materialize_universe_registry(
         else:
             uid = moex_synthetic_uid("share", normalized)
 
+        # A ticker must never end up under two share uids at once: a supplied
+        # uid that differs from an existing row's uid is an identifier
+        # transition (re-stitch via identifier_history, data-layer §2), not a
+        # silent second row with a stale status.
+        clash = connection.execute(
+            """
+            SELECT instrument_uid
+            FROM instrument_reference
+            WHERE ticker = ?
+              AND instrument_kind = 'share'
+              AND instrument_uid <> ?
+            """,
+            (normalized, uid),
+        ).fetchone()
+        if clash is not None:
+            raise ValueError(
+                f"ticker {normalized} already exists under uid {clash[0]}; refusing to "
+                f"create a second share row for uid {uid} — re-stitch identifiers explicitly"
+            )
+
         row = connection.execute(
             """
             SELECT ticker, instrument_kind, whitelist_status, source_version
@@ -105,17 +132,7 @@ def materialize_universe_registry(
             (uid,),
         ).fetchone()
         if row is None:
-            connection.execute(
-                """
-                INSERT INTO instrument_reference (
-                  instrument_uid, ticker, instrument_kind, is_tradable,
-                  whitelist_status, source, source_version, as_of
-                )
-                VALUES (?, ?, 'share', 1, ?, ?, 1, ?)
-                """,
-                (uid, normalized, status, source, as_of),
-            )
-            changes.append(RegistryChange(uid, normalized, None, status))
+            inserts.append((uid, normalized, status))
             continue
 
         existing_ticker, existing_kind, existing_status, existing_version = (
@@ -131,6 +148,27 @@ def materialize_universe_registry(
             )
         if existing_status == status:
             continue
+        updates.append((uid, normalized, existing_status, status, existing_version))
+
+    # Pass 2 — writes; each transition is journaled right after its own write.
+    changes: list[RegistryChange] = []
+    for uid, normalized, status in inserts:
+        connection.execute(
+            """
+            INSERT INTO instrument_reference (
+              instrument_uid, ticker, instrument_kind, is_tradable,
+              whitelist_status, source, source_version, as_of
+            )
+            VALUES (?, ?, 'share', 1, ?, ?, 1, ?)
+            """,
+            (uid, normalized, status, source, as_of),
+        )
+        change = RegistryChange(uid, normalized, None, status)
+        _journal_status_change(
+            connection, change=change, as_of=as_of, actor=actor, config_origin=config_origin
+        )
+        changes.append(change)
+    for uid, normalized, old_status, status, existing_version in updates:
         connection.execute(
             """
             UPDATE instrument_reference
@@ -139,11 +177,11 @@ def materialize_universe_registry(
             """,
             (status, source, existing_version + 1, as_of, uid),
         )
-        changes.append(RegistryChange(uid, normalized, existing_status, status))
-
-    for change in changes:
-        _journal_status_change(connection, change=change, as_of=as_of, actor=actor,
-                               config_origin=config_origin)
+        change = RegistryChange(uid, normalized, old_status, status)
+        _journal_status_change(
+            connection, change=change, as_of=as_of, actor=actor, config_origin=config_origin
+        )
+        changes.append(change)
 
     placeholders = ",".join("?" for _ in statuses_by_ticker)
     orphan_rows = connection.execute(

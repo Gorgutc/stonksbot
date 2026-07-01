@@ -16,12 +16,18 @@ No-lookahead guards baked in (backtest-honesty law):
   ``as_of <= decision_ts`` read gate cannot fabricate as-of-decision knowledge.
 
 Missing-bar detection (single-source index leg — data-layer §3.4/§5.2): when a
-``TradingCalendar`` is supplied, every expected finalized session with no bar
-records an idempotent open ``missing_bar`` conflict. Escalation to persistent
-conflicts / skip signals stays with the cycle driver. Note the documented
-limitation: the calendar is itself derived from IMOEX candles, so IMOEX
-missing-bar detection against it is partially self-referential; MCFTR is fully
-checkable against the IMOEX calendar.
+``TradingCalendar`` is supplied, every expected finalized session inside the
+scan window with no bar records an idempotent open ``missing_bar`` conflict.
+The scan window anchors to the REQUESTED fetch window
+(``window_from_ts``/``window_till_ts``) when provided — a feed that went quiet
+at the head or tail of the window is detected rather than silently shrinking
+the scan to the returned bars. Calendar coverage is validated fail-closed
+BEFORE any row is written (coverage vs contents, mirroring
+``session_policy.resolve_daily_run``). Escalation to persistent conflicts /
+skip signals stays with the cycle driver. Documented limitation: the calendar
+is itself derived from IMOEX candles, so IMOEX missing-bar detection against
+it is partially self-referential; MCFTR is fully checkable against the IMOEX
+calendar.
 """
 
 from __future__ import annotations
@@ -37,6 +43,8 @@ from stonksbot.data.store import (
     record_data_conflict,
     store_candle_snapshot,
 )
+
+_MS_PER_DAY = 86_400_000
 
 
 @dataclass(frozen=True)
@@ -131,6 +139,12 @@ def candle_snapshot_from_iss(
     )
 
 
+def _to_day(ts: int, *, name: str) -> int:
+    if isinstance(ts, bool) or not isinstance(ts, int):
+        raise TypeError(f"{name} must be an int (epoch-ms UTC)")
+    return (ts // _MS_PER_DAY) * _MS_PER_DAY
+
+
 def ingest_index_candles(
     connection: sqlite3.Connection,
     *,
@@ -139,6 +153,9 @@ def ingest_index_candles(
     as_of: int,
     complete_before_ts: int,
     calendar: TradingCalendar | None = None,
+    window_from_ts: int | None = None,
+    window_till_ts: int | None = None,
+    calendar_coverage_through: int | None = None,
 ) -> IndexIngestResult:
     """Persist fetched index candles as one new source_version (fail-closed).
 
@@ -147,6 +164,15 @@ def ingest_index_candles(
     time): bars with ``ts >= complete_before_ts`` are stored ``is_complete=0``
     and stay invisible to entry-safe reads. An empty fetch raises — a blank ISS
     response must never look like a successful ingest.
+
+    ``window_from_ts`` / ``window_till_ts`` are the bounds of the REQUESTED
+    fetch window; pass them so the missing-bar scan covers sessions the feed
+    returned nothing for (head/tail gaps). They default to the returned bar
+    span. ``calendar_coverage_through`` is the till-label the calendar build
+    actually requested (coverage, as opposed to contents); it defaults to the
+    calendar's last known day. Every validation — including calendar coverage
+    — runs BEFORE the first row is written, so a raised error never leaves a
+    partially-stored, un-scanned load in the caller's transaction.
     """
     normalized = ticker.strip().upper()
     if not normalized:
@@ -162,11 +188,52 @@ def ingest_index_candles(
             raise ValueError(f"expected market='index', got {candle.market!r} for {normalized}")
         if candle.secid.strip().upper() != normalized:
             raise ValueError(f"candle secid {candle.secid!r} does not match ticker {normalized}")
+        if candle.ts % _MS_PER_DAY:
+            raise ValueError(
+                f"candle ts {candle.ts} is not a UTC-midnight day label for {normalized}"
+            )
         if candle.ts in seen_ts:
             raise ValueError(f"duplicate candle ts {candle.ts} for {normalized}")
         seen_ts.add(candle.ts)
 
     instrument_uid = resolve_index_uid(connection, ticker=normalized)
+
+    # Plan the missing-bar scan BEFORE any write (fail-closed on coverage).
+    expected_missing: list[int] = []
+    if calendar is not None:
+        scan_start = (
+            _to_day(window_from_ts, name="window_from_ts")
+            if window_from_ts is not None
+            else min(seen_ts)
+        )
+        scan_end = (
+            _to_day(window_till_ts, name="window_till_ts")
+            if window_till_ts is not None
+            else max(seen_ts)
+        )
+        if scan_start > scan_end:
+            raise ValueError("window_from_ts must not be after window_till_ts")
+        finalized_end = min(scan_end, complete_before_ts - _MS_PER_DAY)
+        if finalized_end >= scan_start:
+            coverage = (
+                _to_day(calendar_coverage_through, name="calendar_coverage_through")
+                if calendar_coverage_through is not None
+                else calendar.last
+            )
+            # trading_days_in_range silently returns the INTERSECTION with the
+            # calendar contents; a calendar narrower than the finalized scan
+            # window would make missing sessions vanish without a conflict row.
+            if calendar.first > scan_start or coverage < finalized_end:
+                raise ValueError(
+                    "trading calendar does not cover the missing-bar scan window; "
+                    "extend the calendar fetch window to span the requested candle window"
+                )
+            expected_missing = [
+                day
+                for day in calendar.trading_days_in_range(scan_start, finalized_end)
+                if day not in seen_ts
+            ]
+
     source_version = next_source_version(connection, instrument_uid=instrument_uid)
 
     complete = 0
@@ -184,39 +251,17 @@ def ingest_index_candles(
             ),
         )
 
-    conflict_ids: list[int] = []
-    if calendar is not None:
-        first_day = min(seen_ts)
-        last_day = max(seen_ts)
-        # trading_days_in_range silently returns the INTERSECTION with calendar
-        # contents, so a calendar narrower than the candle span would make
-        # missing sessions in the uncovered finalized region vanish without a
-        # conflict row — fail closed instead (data-truth discipline; the caller
-        # must fetch a calendar window at least as wide as the candle window).
-        finalized = [day for day in seen_ts if day < complete_before_ts]
-        if finalized and (calendar.first > first_day or calendar.last < max(finalized)):
-            raise ValueError(
-                "trading calendar does not cover the missing-bar scan window; "
-                "extend the calendar fetch window to span the ingested candles"
-            )
-        expected = [
-            day
-            for day in calendar.trading_days_in_range(first_day, last_day)
-            if day < complete_before_ts
-        ]
-        for day in expected:
-            if day in seen_ts:
-                continue
-            conflict_ids.append(
-                record_data_conflict(
-                    connection,
-                    instrument_uid=instrument_uid,
-                    ts=day,
-                    kind="missing_bar",
-                    detail={"ticker": normalized, "expected_by": "trading_calendar"},
-                    as_of=as_of,
-                )
-            )
+    conflict_ids = [
+        record_data_conflict(
+            connection,
+            instrument_uid=instrument_uid,
+            ts=day,
+            kind="missing_bar",
+            detail={"ticker": normalized, "expected_by": "trading_calendar"},
+            as_of=as_of,
+        )
+        for day in expected_missing
+    ]
 
     return IndexIngestResult(
         instrument_uid=instrument_uid,

@@ -179,6 +179,35 @@ def test_incomplete_region_is_not_scanned_for_missing_bars() -> None:
     assert result.missing_bar_conflict_ids == ()
 
 
+def test_requested_window_detects_tail_gap() -> None:
+    connection, uid = _connection_with_index()
+    calendar = build_trading_calendar([_day(25), _day(26), _day(29), _day(30)])
+    july1 = int(datetime(2026, 7, 1, tzinfo=UTC).timestamp() * 1000)
+
+    # The feed went quiet after June 26 although the caller requested through
+    # June 30 — the tail sessions must surface as missing_bar conflicts.
+    result = ingest_index_candles(
+        connection,
+        ticker="IMOEX",
+        candles=[_candle(25), _candle(26)],
+        as_of=july1 + 1,
+        complete_before_ts=july1,
+        calendar=calendar,
+        window_from_ts=_day(25),
+        window_till_ts=_day(30),
+    )
+
+    assert len(result.missing_bar_conflict_ids) == 2
+    missing_days = {
+        int(row[0])
+        for row in connection.execute(
+            "SELECT ts FROM data_conflicts WHERE instrument_uid = ? AND kind = 'missing_bar'",
+            (uid,),
+        ).fetchall()
+    }
+    assert missing_days == {_day(29), _day(30)}
+
+
 def test_missing_bar_scan_requires_calendar_coverage() -> None:
     connection, _uid = _connection_with_index()
     # Calendar covers only late June; the candle span starts on June 1 — the
@@ -204,6 +233,11 @@ def test_missing_bar_scan_requires_calendar_coverage() -> None:
             complete_before_ts=_day(26),
             calendar=calendar,
         )
+
+    # Validation runs BEFORE the store loop: a coverage failure must not leave
+    # a partially-stored load in the caller's open transaction.
+    stored = connection.execute("SELECT COUNT(*) FROM candles").fetchone()[0]
+    assert int(stored) == 0
 
 
 def test_ingest_fails_closed_on_bad_inputs() -> None:
