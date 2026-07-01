@@ -18,10 +18,8 @@ function git(cmd) {
   return execSync(cmd, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
 }
 
-let root;
 let hooksDir;
 try {
-  root = git("git rev-parse --show-toplevel");
   const hp = git("git rev-parse --git-path hooks");
   hooksDir = path.isAbsolute(hp) ? hp : path.join(process.cwd(), hp);
 } catch {
@@ -73,5 +71,3 @@ if (hadConflict) {
   process.stderr.write("install-hooks: unmanaged hook conflict; no overwrite performed. Re-run with --force only after review.\n");
   process.exitCode = 1;
 }
-
-void root;
