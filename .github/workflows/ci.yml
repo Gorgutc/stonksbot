@@ -55,16 +55,22 @@ jobs:
       - name: Tests (pytest)
         run: pytest -q
 
+      # The Node harness gates are Python-version-independent — run them on one
+      # matrix leg only to avoid doubling gate runtime and flake surface.
       - name: Harness self-check (check-kit)
+        if: matrix.python-version == '3.12'
         run: node tools/check-kit.mjs
 
       - name: Gate regression tests (test-gates)
+        if: matrix.python-version == '3.12'
         run: node tools/test-gates.mjs
 
       - name: Secret scan — all tracked files
+        if: matrix.python-version == '3.12'
         run: node tools/secret-scan.mjs --all
 
       - name: Evidence gate (diff vs origin/main)
+        if: matrix.python-version == '3.12'
         run: |
           if git rev-parse --verify --quiet origin/main >/dev/null; then
             node tools/evidence-gate.mjs --base origin/main

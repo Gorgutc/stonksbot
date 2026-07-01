@@ -19,7 +19,7 @@
   ],
   "evidenceGates": [
     {
-      "changed": ["**/strategy/**", "**/backtest/**", "**/signals/**", "**/strategy*.py", "**/backtest*.py", "**/signals*.py"],
+      "changed": ["**/strategy/**", "**/backtest/**", "**/signals/**", "**/strateg*.py", "**/backtest*.py", "**/signal*.py"],
       "requires": ["docs/evidence/walk-forward-latest.md"],
       "note": "Strategy/backtest surface changed -> attach walk-forward + cost-sensitivity evidence before shipping (fires only after install-hooks.mjs and once the surface exists). Globs cover both directory layouts (**/strategy/**) and flat modules (**/strategy*.py). PATH BINDING: M2 strategy/backtest/signals code MUST live under one of these globs, or this list is extended in the same change - code outside them silently bypasses the gate."
     }
