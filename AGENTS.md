@@ -223,7 +223,10 @@ ruff check . && pytest -q                             # project verify.fast
   `verify.ship = "pytest --maxfail=1 -q"`. Harness/gate checks still exist
   (`check-kit`, `test-gates`, `secret-scan`, `evidence-gate`). Any change to a
   strategy/backtest surface must carry walk-forward + cost-sensitivity evidence
-  (evidence gate).
+  (evidence gate). Path binding: M2 strategy/backtest/signals code must live under
+  the `.agent-kit.json` `evidenceGates` globs (directory or flat-module form) —
+  code outside them silently bypasses the gate; extend the globs in the same change
+  if the layout differs.
 - **Do-not-touch:** secrets/tokens (never in code/config/logs/dashboard/Telegram —
   env/secret store only); the frozen risk policy in `docs/frozen-decisions.md`; the
   Second Brain protocol. Record durable decisions in `docs/frozen-decisions.md` AND

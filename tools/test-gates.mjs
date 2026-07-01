@@ -161,11 +161,47 @@ function testEvidenceGateBaseSeesCommittedBranchChanges() {
   );
 }
 
+function testEvidenceGateMatchesFlatStrategyModules() {
+  const dir = initRepo();
+  write(
+    path.join(dir, ".agent-kit.json"),
+    JSON.stringify({
+      evidenceGates: [
+        {
+          changed: ["**/strategy/**", "**/strategy*.py", "**/signals*.py"],
+          requires: ["docs/evidence/walk-forward-latest.md"],
+          note: "strategy evidence required",
+        },
+      ],
+    }),
+  );
+  write(path.join(dir, "README.md"), "base\n");
+  run("git", ["add", "."], { cwd: dir });
+  run("git", ["commit", "-m", "base"], { cwd: dir });
+
+  write(path.join(dir, "src", "stonksbot", "store.py"), "print('not a strategy surface')\n");
+  const unrelated = run(NODE, [EVIDENCE_GATE], { cwd: dir });
+  assert(
+    unrelated.status === 0,
+    "evidence-gate ignores flat modules outside the strategy globs",
+    `status=${unrelated.status}\nstdout=${unrelated.stdout}\nstderr=${unrelated.stderr}\n`,
+  );
+
+  write(path.join(dir, "src", "stonksbot", "strategy.py"), "print('flat strategy module')\n");
+  const flatModule = run(NODE, [EVIDENCE_GATE], { cwd: dir });
+  assert(
+    flatModule.status === 1 && /required evidence missing/i.test(flatModule.stderr),
+    "evidence-gate matches flat strategy modules (no fail-open)",
+    `status=${flatModule.status}\nstdout=${flatModule.stdout}\nstderr=${flatModule.stderr}\n`,
+  );
+}
+
 testSecretScanOutsideGitFailsClosed();
 testSecretScanBlocksToken();
 testSecretScanAllowsEnvExamplePlaceholder();
 testSecretScanBlocksEnvExampleToken();
 testEvidenceGateBaseSeesCommittedBranchChanges();
+testEvidenceGateMatchesFlatStrategyModules();
 
 process.stdout.write(`\n${failed ? "FAIL" : "PASS"}  gate regression tests\n`);
 process.exitCode = failed ? 1 : 0;

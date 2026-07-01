@@ -84,6 +84,10 @@
 - **Exit:** reproducible versioned 3y dataset (+ warm-up) incl. index; detection path tested.
 
 ### M2 — Strategy + honest backtest  `[ ]`  (research-backtest)
+> **Path binding (evidence gate):** M2 strategy/backtest/signals code must live under the
+> `.agent-kit.json` `evidenceGates` globs — `**/strategy/**`-style directories or
+> `**/strategy*.py`-style flat modules — otherwise the gate silently never fires.
+> A different layout requires extending the globs in the same change.
 - [ ] strategy contract (TZ §6, MAs pinned to MA20/MA50 live); ranking
 - [ ] backtest: conservative fills **both sides** (mirrors §8 entry rule), costs **both tariffs incl. 390 ₽/mo**, slippage
 - [ ] taxes (НДФЛ FIFO, **hand-computed tax fixture**) + dividends (net) + dividend-gap block; benchmarks (equal-weight, IMOEX, MCFTR gross, cash)
