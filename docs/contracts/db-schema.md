@@ -91,6 +91,10 @@ CREATE TABLE instrument_reference (
 -- Benchmark resolution: config `benchmarks` symbols resolve to instrument_reference rows by TICKER with
 -- instrument_kind='index' (index_source secids = IMOEX, MCFTR); 'cash' and 'equal_weight' are SYNTHETIC
 -- benchmarks with no DB row.
+-- Pre-T-Invest uids (M1 interim, PROVISIONAL - owner decision 2.1, docs/ops/pre-live-owner-decisions.md):
+-- rows seeded before the T-Invest reference refresh use synthetic 'moex_iss:{kind}:{SECID}' uids
+-- (data/registry.py). Index uids are effectively permanent (no T-Invest index-candle leg ever exists);
+-- share uids are placeholders re-stitched by ISIN via identifier_history (data-layer contract section 2).
 
 CREATE TABLE candles (
   instrument_uid TEXT NOT NULL REFERENCES instrument_reference(instrument_uid),

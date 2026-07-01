@@ -65,6 +65,13 @@ T-Invest API) — `/iss/statistics/engines/stock/splits[/{sec}]`, `/iss/cci/corp
 - **[verify] (M4, empirical — do NOT assert):** whether a T-Invest `instrument_uid` **changes across a rename**
   is unexposed. The contract therefore treats **ISIN as the stable join key** and confirms `instrument_uid`
   continuity (vs. a fresh uid that must be re-stitched) at integration — never assumed settled here.
+- **Pre-T-Invest provenance (M1 interim, PROVISIONAL — owner decision 2.1 in
+  `docs/ops/pre-live-owner-decisions.md`):** rows created before the T-Invest reference refresh exists use a
+  namespaced synthetic uid **`moex_iss:{kind}:{SECID}`** (`data/registry.py::moex_synthetic_uid`). The prefix
+  cannot collide with T-Invest's opaque uids, and `source='moex_iss'` keeps the provenance auditable. Index uids
+  (IMOEX/MCFTR) are effectively permanent — no T-Invest index-candle leg exists (§3.4); share uids are
+  placeholders to be re-stitched by ISIN via `identifier_history` when step 1 (reference refresh) lands. M1
+  ingests **index candles only** under synthetic uids, so no share history accrues under a placeholder key.
 
 ## 3. Ingestion behavior
 
@@ -138,6 +145,11 @@ checks (§3.5, §5.2) apply. A missing index bar that the market-regime filter n
   mismatch is a hard error, never a silent set. A signal may be computed **only** on an `is_complete=1` bar.
 - **[verify] (M1, empirical):** does the T-Invest GetCandles D1 `close` include the evening session? Snapshot
   19:00 vs 23:50 on a known day. This does not block M0 while `auction_close` remains the ratified source.
+- **Index-leg completeness (M1 interim, PROVISIONAL — owner decision 2.4 in
+  `docs/ops/pre-live-owner-decisions.md`):** the single-source ISS index leg (§3.4) has no close-source assert
+  to run, so `data/ingest.py::ingest_index_candles` marks a bar `is_complete=1` only when
+  `ts < complete_before_ts` — the caller's finality cutoff; the current session's possibly-in-progress ISS bar
+  is never marked complete. The close-source assert above applies to the share legs.
 
 ## 5. `data_conflict` detection state machine [LAW: data truth]
 
