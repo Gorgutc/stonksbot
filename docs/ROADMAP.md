@@ -5,16 +5,18 @@
 > Legend: `[ ]` todo · `[~]` in progress · `[x]` done. Each milestone names the `.agent-kit.json`
 > profile it activates (`dormant → active` when the milestone starts).
 
-## Current state (2026-06-30)
+## Current state (2026-07-01)
 - **Phase:** **M0 complete; M1 in progress** — CI shipped in PR #7 (merged `main@14dadb4`);
   PR #9 landed M1.1 schema/ISS data work; PR #10 fixed ISS pagination/cursor
   fail-closed behavior and `signals.reason` checks; PR #11 added the versioned
-  data-store, latest-as-of read path, and `data_conflict` gating (SQLite
-  `SCHEMA_VERSION = 3`), so current main is `9bb8eda`.
+  data-store, latest-as-of read path, and `data_conflict` gating; PR #12 enforced the
+  frozen pilot risk band at `RiskSettings` construction (ADR-0008); PR #13 made
+  `data_conflict` re-detection idempotent (partial UNIQUE on open rows) at SQLite
+  `SCHEMA_VERSION = 4`, so current main is `6576f28`.
   Verify + harness gates run on PR/main.
 - **Done:** agent harness (`check-kit` currently reports 53 checks / 0 failed), Second Brain folder, frozen invariants, comprehensive TZ
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
-  Merged to `main` (latest verified `9bb8eda` after PR #11; PR #7 closed M0 with CI,
+  Merged to `main` (latest verified `6576f28` after PR #13; PR #7 closed M0 with CI,
   PR #6 shipped the M0 skeleton, PR #5 the pre-M0 readiness layer).
 - **Initial M0 code shipped** — `research-backtest` is active; `broker-adapter` and
   `execution-confirm` remain dormant. The shipped M0 scope is config, schema, account-guard stub,
@@ -26,12 +28,16 @@
   candle timestamps, and enforces decision-aware frozen `signals.reason` checks.
 - **M1 data persistence landed (2026-06-30, PR #11):** versioned data-store helpers add
   insert-only candle/dividend snapshots, latest-as-of read gates, entry-safe
-  stale/conflict filters, persistent `data_conflict` skip signals, and schema guards
-  (SQLite `SCHEMA_VERSION = 3`) for the selected/confirmed proposal-to-order flow.
-- **Current branch (2026-06-30):** risk-config hardening — the frozen pilot band is now
+  stale/conflict filters, persistent `data_conflict` skip signals, and versioned
+  schema guards for the selected/confirmed proposal-to-order flow.
+- **M1 risk-config hardening landed (2026-06-30, PR #12):** the frozen pilot band is now
   enforced at `RiskSettings` model construction in both directions (a relaxed cap or a
   nonsensical value fails closed), closing the `load_settings(validate_startup=False)`
   bypass; see `docs/frozen-decisions.md` + ADR-0008.
+- **M1 `data_conflict` idempotency landed (2026-07-01, PR #13):** `data_conflict`
+  re-detection is now idempotent — a partial UNIQUE on open `data_conflicts` rows plus an
+  `ON CONFLICT ... WHERE resolved = 0` upsert keep the earliest `as_of` and emit at most
+  one skip signal per bar; SQLite `SCHEMA_VERSION` bumped 3 → 4 (pre-v4 DBs fail closed).
 - **Pre-M0 contract layer RESOLVED (2026-06-27 #3):** TZ §4.1/§5.1/§12.1 → `docs/contracts/`
   (config-and-secrets, db-schema, tax-and-dividends); `[verify]` gaps closed by research (index = MOEX ISS,
   SDK = `t-tech-investments` via GitLab, `GetDividends`, auction close, НДФЛ 13/15%); **secret-scan gate added**.
@@ -63,7 +69,7 @@
 ### M1 — Data layer  `[~]`  (research-backtest)
 - [~] T-Invest read-only + MOEX ISS fallback/cross-check; `candles` + `instrument_reference` (uid-keyed) **+ index series** (IMOEX/MCFTR — MOEX ISS, ADR-0005). Current slice: MOEX ISS read-only candles with pagination/fail-closed checks; no broker/execution SDK, full-access/live token, Telegram, or order path.
 - [ ] **universe registry + status transitions** (managed-registry invariant); eligibility filters
-- [~] snapshot versioning/read path; **`data_conflict` DETECTION/flagging tested** (PR #11 landed insert-only snapshots, latest-as-of reads, stale/conflict entry skips, dividend `as_of` gating, persistent conflict skip signals; historical/synthetic divergence fixtures and live skip-entry asserted in M4 remain)
+- [~] snapshot versioning/read path; **`data_conflict` DETECTION/flagging tested** (PR #11 landed insert-only snapshots, latest-as-of reads, stale/conflict entry skips, dividend `as_of` gating, persistent conflict skip signals; PR #13 made re-detection idempotent — partial UNIQUE on open rows + earliest-`as_of` upsert + one skip signal per bar, `SCHEMA_VERSION` 3 → 4; historical/synthetic divergence fixtures and live skip-entry asserted in M4 remain)
 - [ ] split adjustment + ticker-history (TCSG→T) + dividend calendar (T-Invest GetDividends, ADR-0005)
 - **Exit:** reproducible versioned 3y dataset (+ warm-up) incl. index; detection path tested.
 
