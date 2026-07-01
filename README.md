@@ -13,11 +13,14 @@ and document the system; they never decide buy/sell.
 > (versioned data-store + latest-as-of read path + `data_conflict` gating), PR #12
 > (frozen pilot risk band enforced at `RiskSettings` construction, ADR-0008), and
 > PR #13 (idempotent `data_conflict` re-detection — partial UNIQUE on open rows —
-> SQLite `SCHEMA_VERSION = 4`), so current main is `6576f28`. The active `research-backtest`
-> profile has the Python skeleton — config loader, SQLite DDL/bootstrap, and a
-> fail-closed account-guard stub with pytest coverage — plus CI
+> SQLite `SCHEMA_VERSION = 4`), PR #14 (repo status-sync + install-hooks dead-binding
+> cleanup), and PR #15 (MOEX trading-calendar loader — `src/stonksbot/data/calendar.py`,
+> the producer for `_next_trading_day`), so current main is `335485c`. The active
+> `research-backtest` profile has the Python skeleton — config loader, SQLite
+> DDL/bootstrap, and a fail-closed account-guard stub with pytest coverage — plus CI
 > (`.github/workflows/ci.yml`, verify + harness gates on PR/main). Broader M1 data
-> work (universe registry, eligibility, dividend/split/calendar) remains in progress.
+> work (universe registry, eligibility, dividend/split calendars beyond the landed
+> trading calendar) remains in progress.
 > Broker/execution profiles remain dormant.
 
 ## Read first
