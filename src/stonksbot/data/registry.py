@@ -91,6 +91,7 @@ def materialize_universe_registry(
     # Pass 1 — read-only planning + validation (no writes).
     inserts: list[tuple[str, str, UniverseStatus]] = []
     updates: list[tuple[str, str, UniverseStatus, UniverseStatus, int]] = []
+    planned_uid_tickers: dict[str, str] = {}
     for ticker in sorted(statuses_by_ticker):
         status = statuses_by_ticker[ticker]
         normalized = ticker.strip().upper()
@@ -102,6 +103,12 @@ def materialize_universe_registry(
                 raise ValueError(f"instrument_uid for {normalized} must be non-empty")
         else:
             uid = moex_synthetic_uid("share", normalized)
+        planned_ticker = planned_uid_tickers.get(uid)
+        if planned_ticker is not None and planned_ticker != normalized:
+            raise ValueError(
+                f"duplicate instrument_uid {uid} supplied for {planned_ticker} and {normalized}"
+            )
+        planned_uid_tickers[uid] = normalized
 
         # A ticker must never end up under two share uids at once: a supplied
         # uid that differs from an existing row's uid is an identifier
@@ -235,6 +242,21 @@ def seed_index_reference(
                 f"refusing to reuse it for index {normalized}"
             )
         return uid
+    existing_ticker_row = connection.execute(
+        """
+        SELECT instrument_uid
+        FROM instrument_reference
+        WHERE ticker = ?
+          AND instrument_kind = 'index'
+          AND instrument_uid <> ?
+        """,
+        (normalized, uid),
+    ).fetchone()
+    if existing_ticker_row is not None:
+        raise ValueError(
+            f"index {normalized} already exists under uid {existing_ticker_row[0]}; "
+            f"refusing to create a second index row for uid {uid}"
+        )
 
     connection.execute(
         """

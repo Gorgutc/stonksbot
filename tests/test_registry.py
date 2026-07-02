@@ -213,6 +213,21 @@ def test_materialize_rejects_second_uid_for_existing_ticker() -> None:
     assert int(rows[0]) == 1
 
 
+def test_materialize_rejects_duplicate_supplied_uids_before_writes() -> None:
+    connection = _connection()
+
+    with pytest.raises(ValueError, match="duplicate instrument_uid"):
+        materialize_universe_registry(
+            connection,
+            statuses_by_ticker=build_universe_status_map(approved=["GAZP", "SBER"]),
+            uids_by_ticker={"GAZP": "dup-uid", "SBER": "dup-uid"},
+            as_of=1_000,
+        )
+
+    assert connection.execute("SELECT COUNT(*) FROM instrument_reference").fetchone()[0] == 0
+    assert _audit_count(connection) == 0
+
+
 def test_failed_materialization_writes_nothing() -> None:
     connection = _connection()
     # 'T' pre-exists under a different uid -> pass-1 planning must raise before
@@ -240,6 +255,29 @@ def test_failed_materialization_writes_nothing() -> None:
     ).fetchone()
     assert int(count[0]) == 1  # only the pre-existing row
     assert _audit_count(connection) == 0
+
+
+def test_seed_index_rejects_second_uid_for_existing_ticker() -> None:
+    connection = _connection()
+    uid = seed_index_reference(connection, secid="IMOEX", as_of=1_000)
+
+    with pytest.raises(ValueError, match="already exists under uid"):
+        seed_index_reference(
+            connection,
+            secid="IMOEX",
+            instrument_uid="custom:index:IMOEX",
+            as_of=2_000,
+        )
+
+    rows = connection.execute(
+        """
+        SELECT instrument_uid, ticker
+        FROM instrument_reference
+        WHERE ticker = 'IMOEX'
+          AND instrument_kind = 'index'
+        """
+    ).fetchall()
+    assert rows == [(uid, "IMOEX")]
 
 
 def test_schema_rejects_index_row_with_whitelist_status() -> None:
