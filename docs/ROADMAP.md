@@ -5,7 +5,7 @@
 > Legend: `[ ]` todo · `[~]` in progress · `[x]` done. Each milestone names the `.agent-kit.json`
 > profile it activates (`dormant → active` when the milestone starts).
 
-## Current state (2026-07-01)
+## Current state (2026-07-02)
 - **Phase:** **M0 complete; M1 in progress** — CI shipped in PR #7 (merged `main@14dadb4`);
   PR #9 landed M1.1 schema/ISS data work; PR #10 fixed ISS pagination/cursor
   fail-closed behavior and `signals.reason` checks; PR #11 added the versioned
@@ -14,11 +14,13 @@
   `data_conflict` re-detection idempotent (partial UNIQUE on open rows) at SQLite
   `SCHEMA_VERSION = 4`; PR #14 synced the status surfaces + removed a dead
   `install-hooks.mjs` binding; PR #15 added the MOEX trading-calendar loader,
-  so current main is `335485c`.
+  PR #16 added Tier-1 hardening; PR #18 added the registry/ingest/session-policy
+  M1 data enablers; PR #19 closed registry UID collision fail-closed gaps, so
+  current main is `cfaec97`.
   Verify + harness gates run on PR/main.
 - **Done:** agent harness (`check-kit` currently reports 53 checks / 0 failed), Second Brain folder, frozen invariants, comprehensive TZ
   (`docs/TZ.md` rev.2 — adversarially reviewed, grounded against verified 2026 T-Invest facts).
-  Merged to `main` (latest verified `335485c` after PR #15; PR #7 closed M0 with CI,
+  Merged to `main` (latest verified `cfaec97` after PR #19; PR #7 closed M0 with CI,
   PR #6 shipped the M0 skeleton, PR #5 the pre-M0 readiness layer).
 - **Initial M0 code shipped** — `research-backtest` is active; `broker-adapter` and
   `execution-confirm` remain dormant. The shipped M0 scope is config, schema, account-guard stub,
@@ -48,6 +50,17 @@
   producers deriving trading days from MOEX ISS IMOEX D1 candle dates (printed bar =
   trading day; no-lookahead, fail-closed); wires the previously producerless
   `_next_trading_day` / `store_dividend_snapshot` (+14 tests, 96 total).
+- **Tier-1 hardening landed (2026-07-02, PR #16):** evidence-gate flat-module
+  coverage, single-source package version, DRY ISS fixtures, CI hardening, and
+  `docs/ops/pre-live-owner-decisions.md` for owner-decision triage.
+- **M1 data enablers landed (2026-07-02, PR #18):** `src/stonksbot/data/registry.py`
+  materializes the ratified universe and seeds IMOEX/MCFTR index references;
+  `src/stonksbot/data/ingest.py` bridges MOEX ISS candles into the versioned store;
+  `src/stonksbot/session_policy.py` gates the daily cycle around close/trading-day
+  freshness while broker/execution profiles stay dormant.
+- **Registry fail-closed fix landed (2026-07-02, PR #19):** duplicate supplied share
+  `instrument_uid` values and duplicate index tickers with conflicting custom uids
+  are rejected before writes/journaling; latest local/full verify evidence is 130 tests.
 - **Pre-M0 contract layer RESOLVED (2026-06-27 #3):** TZ §4.1/§5.1/§12.1 → `docs/contracts/`
   (config-and-secrets, db-schema, tax-and-dividends); `[verify]` gaps closed by research (index = MOEX ISS,
   SDK = `t-tech-investments` via GitLab, `GetDividends`, auction close, НДФЛ 13/15%); **secret-scan gate added**.
@@ -77,8 +90,8 @@
 - **Exit:** `check-kit` green + `verify.fast`/`verify.deep`/`verify.ship` green; profile checklist "data schema recorded" checked.
 
 ### M1 — Data layer  `[~]`  (research-backtest)
-- [~] T-Invest read-only + MOEX ISS fallback/cross-check; `candles` + `instrument_reference` (uid-keyed) **+ index series** (IMOEX/MCFTR — MOEX ISS, ADR-0005). Current slice: MOEX ISS read-only candles with pagination/fail-closed checks + the MOEX trading calendar (PR #15, derived from IMOEX D1 candle dates); no broker/execution SDK, full-access/live token, Telegram, or order path.
-- [~] **universe registry + status transitions** (managed-registry invariant); eligibility filters. Landed: config→`whitelist_status` materialization + IMOEX/MCFTR index seeding (`data/registry.py`), ISS index-candle ingest into the versioned store (`data/ingest.py`), pure session-policy daily-cycle gate (`session_policy.py`); the per-cycle eligibility filter itself remains todo.
+- [~] T-Invest read-only + MOEX ISS fallback/cross-check; `candles` + `instrument_reference` (uid-keyed) **+ index series** (IMOEX/MCFTR — MOEX ISS, ADR-0005). Current slice: MOEX ISS read-only candles with pagination/fail-closed checks, the MOEX trading calendar (PR #15), and PR #18 registry/ingest/session-policy enablers; no broker/execution SDK, full-access/live token, Telegram, or order path.
+- [~] **universe registry + status transitions** (managed-registry invariant); eligibility filters. Landed: config→`whitelist_status` materialization + IMOEX/MCFTR index seeding (`data/registry.py`), ISS index-candle ingest into the versioned store (`data/ingest.py`), pure session-policy daily-cycle gate (`session_policy.py`), and PR #19 registry UID collision guards; the per-cycle eligibility filter itself remains todo.
 - [~] snapshot versioning/read path; **`data_conflict` DETECTION/flagging tested** (PR #11 landed insert-only snapshots, latest-as-of reads, stale/conflict entry skips, dividend `as_of` gating, persistent conflict skip signals; PR #13 made re-detection idempotent — partial UNIQUE on open rows + earliest-`as_of` upsert + one skip signal per bar, `SCHEMA_VERSION` 3 → 4; historical/synthetic divergence fixtures and live skip-entry asserted in M4 remain)
 - [ ] split adjustment + ticker-history (TCSG→T) + dividend calendar (T-Invest GetDividends, ADR-0005)
 - **Exit:** reproducible versioned 3y dataset (+ warm-up) incl. index; detection path tested.
