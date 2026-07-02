@@ -183,7 +183,7 @@ ruff check . && pytest -q                             # project verify.fast
   proposes an entry, the human confirms in Telegram; protective exits are
   automated). Codex/Claude BUILD, review, and document — **never** decide buy/sell.
 - **Status:** M0 COMPLETE. M0 closed in PR #7 (`main@14dadb4`); current main after
-  PR #15 is `335485c`. Owner decision on
+  PR #19 is `cfaec97`. Owner decision on
   2026-06-29 activated only the `research-backtest` profile after `main@ca0c04e` /
   PR #5 completed readiness; PR #6 landed the Python research/backtest package,
   config loader, SQLite DDL, account-guard stub, and ruff/pytest verification;
@@ -196,7 +196,12 @@ ruff check . && pytest -q                             # project verify.fast
   open rows) at SQLite `SCHEMA_VERSION = 4`; PR #14 synced the repo status surfaces
   and removed a dead `install-hooks.mjs` binding; PR #15 added the MOEX
   trading-calendar loader (`src/stonksbot/data/calendar.py`, the producer for
-  `_next_trading_day`). M0 is done; M1 remains in progress.
+  `_next_trading_day`); PR #16 added Tier-1 hardening (evidence-gate flat-module
+  coverage, single-source package version, DRY ISS fixtures, CI hardening, and
+  pre-live owner-decision triage); PR #18 added M1 data enablers
+  (`src/stonksbot/data/registry.py`, `src/stonksbot/data/ingest.py`,
+  `src/stonksbot/session_policy.py`); PR #19 closed registry UID collision
+  fail-closed gaps. M0 is done; M1 remains in progress.
   `broker-adapter` and `execution-confirm` remain **dormant** — introduce no broker order placement, Telegram execution,
   live/sandbox trading dependency, full-access/live token handling, or build command for those profiles without an
   explicit activation request (see `component-guardian` + `docs/profiles/`). Active

@@ -8,19 +8,16 @@ confirms in Telegram, and protective exits are automated. Codex/Claude build, re
 and document the system; they never decide buy/sell.
 
 > **Status: M0 complete; M1 in progress.** M0 closed in PR #7 (`main@14dadb4`); the
-> M1 data layer has since landed PR #9 (schema hardening + read-only MOEX ISS leg),
-> PR #10 (ISS pagination/cursor fail-closed + `signals.reason` checks), PR #11
-> (versioned data-store + latest-as-of read path + `data_conflict` gating), PR #12
-> (frozen pilot risk band enforced at `RiskSettings` construction, ADR-0008), and
-> PR #13 (idempotent `data_conflict` re-detection — partial UNIQUE on open rows —
-> SQLite `SCHEMA_VERSION = 4`), PR #14 (repo status-sync + install-hooks dead-binding
-> cleanup), and PR #15 (MOEX trading-calendar loader — `src/stonksbot/data/calendar.py`,
-> the producer for `_next_trading_day`), so current main is `335485c`. The active
+> M1 data layer has since landed PR #9-#15, PR #16 (Tier-1 hardening: evidence-gate
+> globs, single-source version, DRY ISS fixtures, CI hardening, pre-live owner-decision
+> triage), PR #18 (M1 data enablers: universe registry materialization/index seeding,
+> ISS-to-store ingest bridge, and pure session-policy gate), and PR #19 (registry UID
+> collision fail-closed guards). Current main is `cfaec97`. The active
 > `research-backtest` profile has the Python skeleton — config loader, SQLite
 > DDL/bootstrap, and a fail-closed account-guard stub with pytest coverage — plus CI
 > (`.github/workflows/ci.yml`, verify + harness gates on PR/main). Broader M1 data
-> work (universe registry, eligibility, dividend/split calendars beyond the landed
-> trading calendar) remains in progress.
+> work (eligibility, remaining completeness/divergence detectors, liquidity stats, and
+> dividend/split calendars beyond the landed trading calendar) remains in progress.
 > Broker/execution profiles remain dormant.
 
 ## Read first
